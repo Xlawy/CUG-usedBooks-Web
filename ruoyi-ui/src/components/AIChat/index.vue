@@ -33,7 +33,7 @@
           :rows="2"
           placeholder="请输入问题..."
           v-model="inputMessage"
-          @keyup.enter.native="sendMessage"
+          @keyup.enter.native.exact="sendMessage"
         ></el-input>
         <el-button type="primary" icon="el-icon-s-promotion" @click="sendMessage" :loading="isLoading">发送</el-button>
       </div>
@@ -78,9 +78,11 @@ export default {
   },
   methods: {
     toggleCollapse() {
+      console.log('Toggle collapse called, current state:', this.isCollapsed);
       this.isCollapsed = !this.isCollapsed;
     },
     closeChat() {
+      console.log('Close chat called');
       this.$emit('update:visible', false);
     },
     getCurrentTime() {
@@ -164,6 +166,13 @@ export default {
   
   &.is-collapsed {
     max-height: 45px;
+  }
+  
+  @media (max-width: 767px) {
+    width: 90%;
+    right: 5%;
+    bottom: 70px;
+    max-height: 400px;
   }
 }
 

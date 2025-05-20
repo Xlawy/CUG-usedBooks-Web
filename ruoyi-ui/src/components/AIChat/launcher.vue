@@ -1,6 +1,6 @@
 <template>
   <div>
-    <div class="ai-chat-launcher" @click="toggleChat" v-if="!chatVisible">
+    <div class="ai-chat-launcher" @click.stop="toggleChat" v-if="!chatVisible">
       <i class="el-icon-message"></i>
     </div>
     <ai-chat :visible.sync="chatVisible"></ai-chat>
@@ -13,7 +13,7 @@ import AIChat from './index'
 export default {
   name: 'AIChatLauncher',
   components: {
-    AIChat
+    'ai-chat': AIChat
   },
   data() {
     return {
@@ -22,7 +22,8 @@ export default {
   },
   methods: {
     toggleChat() {
-      this.chatVisible = true
+      this.chatVisible = !this.chatVisible;
+      console.log('Chat visibility toggled:', this.chatVisible);
     }
   }
 }

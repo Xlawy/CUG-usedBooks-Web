@@ -12,6 +12,7 @@
         <settings/>
       </right-panel>
     </div>
+    <ai-chat-launcher />
   </div>
 </template>
 
@@ -21,6 +22,7 @@ import { AppMain, Navbar, Settings, Sidebar, TagsView } from './components'
 import ResizeMixin from './mixin/ResizeHandler'
 import { mapState } from 'vuex'
 import variables from '@/assets/styles/variables.scss'
+import AIChatLauncher from '@/components/AIChat/launcher'
 
 export default {
   name: 'Layout',
@@ -30,7 +32,8 @@ export default {
     RightPanel,
     Settings,
     Sidebar,
-    TagsView
+    TagsView,
+    AIChatLauncher
   },
   mixins: [ResizeMixin],
   computed: {

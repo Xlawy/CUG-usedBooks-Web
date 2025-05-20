@@ -183,7 +183,7 @@ export default {
         const c1 = new this.cloud.Cloud({
           identityless: true,
           resourceAppid: 'wxe26635509bb0f6f3',
-          resourceEnv: 'zjh-3g1jn04nc036f36e',
+          resourceEnv: 'cloud1-0gjr8zke3634e2e7',
         });
         await c1.init();
         const res = await c1.callFunction({
@@ -218,7 +218,7 @@ export default {
     //     const c1 = new this.cloud.Cloud({
     //       identityless: true,
     //       resourceAppid: 'wxe26635509bb0f6f3',
-    //       resourceEnv: 'zjh-3g1jn04nc036f36e',
+    //       resourceEnv: 'cloud1-0gjr8zke3634e2e7',
     //     });
     //     await c1.init();
     //     const res = await c1.callFunction({
@@ -310,7 +310,7 @@ export default {
             const c2 = new this.cloud.Cloud({
               identityless: true,
               resourceAppid: 'wxe26635509bb0f6f3',
-              resourceEnv: 'zjh-3g1jn04nc036f36e',
+              resourceEnv: 'cloud1-0gjr8zke3634e2e7',
             });
             await c2.init();
             let res;
@@ -375,7 +375,7 @@ export default {
           const c3 = new this.cloud.Cloud({
             identityless: true,
             resourceAppid: 'wxe26635509bb0f6f3',
-            resourceEnv: 'zjh-3g1jn04nc036f36e',
+            resourceEnv: 'cloud1-0gjr8zke3634e2e7',
           });
           await c3.init();
           const res = await c3.callFunction({
@@ -404,7 +404,7 @@ export default {
         const c4 = new this.cloud.Cloud({
           identityless: true,
           resourceAppid: 'wxe26635509bb0f6f3',
-          resourceEnv: 'zjh-3g1jn04nc036f36e',
+          resourceEnv: 'cloud1-0gjr8zke3634e2e7',
         });
         await c4.init();
         const res = await c4.callFunction({
