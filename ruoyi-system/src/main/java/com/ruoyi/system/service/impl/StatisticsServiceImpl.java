@@ -204,27 +204,52 @@ public class StatisticsServiceImpl implements IStatisticsService
         Map<String, Object> result = new HashMap<>();
         Map<String, Object> statistics = new HashMap<>();
         
-        // 并行获取所有统计数据
-        Map<String, Object> usersResult = getUsersCount();
-        Map<String, Object> ordersResult = getOrdersCount();
-        Map<String, Object> booksResult = getBooksCount();
-        Map<String, Object> publishedBooksResult = getPublishedBooksCount();
+        log.info("开始获取所有统计数据");
         
-        // 检查是否所有请求都成功
-        boolean allSuccess = (Boolean) usersResult.getOrDefault("success", false) &&
-                            (Boolean) ordersResult.getOrDefault("success", false) &&
-                            (Boolean) booksResult.getOrDefault("success", false) &&
-                            (Boolean) publishedBooksResult.getOrDefault("success", false);
+        try {
+            // 并行获取所有统计数据
+            Map<String, Object> usersResult = getUsersCount();
+            log.info("用户统计数据: {}", usersResult);
+            
+            Map<String, Object> ordersResult = getOrdersCount();
+            log.info("订单统计数据: {}", ordersResult);
+            
+            Map<String, Object> booksResult = getBooksCount();
+            log.info("图书统计数据: {}", booksResult);
+            
+            Map<String, Object> publishedBooksResult = getPublishedBooksCount();
+            log.info("在售图书统计数据: {}", publishedBooksResult);
+            
+            // 检查是否所有请求都成功
+            boolean allSuccess = (Boolean) usersResult.getOrDefault("success", false) &&
+                                (Boolean) ordersResult.getOrDefault("success", false) &&
+                                (Boolean) booksResult.getOrDefault("success", false) &&
+                                (Boolean) publishedBooksResult.getOrDefault("success", false);
+            
+            // 填充统计数据
+            statistics.put("users", usersResult.getOrDefault("count", 0));
+            statistics.put("orders", ordersResult.getOrDefault("count", 0));
+            statistics.put("books", booksResult.getOrDefault("count", 0));
+            statistics.put("publishedBooks", publishedBooksResult.getOrDefault("count", 0));
+            
+            result.put("success", allSuccess);
+            result.put("statistics", statistics);
+            
+            if (!allSuccess) {
+                log.error("部分统计数据获取失败：users={}, orders={}, books={}, publishedBooks={}",
+                    usersResult.get("success"),
+                    ordersResult.get("success"),
+                    booksResult.get("success"),
+                    publishedBooksResult.get("success"));
+            }
+            
+        } catch (Exception e) {
+            log.error("获取统计数据时发生异常", e);
+            result.put("success", false);
+            result.put("message", "获取统计数据时发生异常：" + e.getMessage());
+        }
         
-        // 填充统计数据
-        statistics.put("users", usersResult.getOrDefault("count", 0));
-        statistics.put("orders", ordersResult.getOrDefault("count", 0));
-        statistics.put("books", booksResult.getOrDefault("count", 0));
-        statistics.put("publishedBooks", publishedBooksResult.getOrDefault("count", 0));
-        
-        result.put("success", allSuccess);
-        result.put("statistics", statistics);
-        
+        log.info("统计数据获取完成: {}", result);
         return result;
     }
 
@@ -271,8 +296,7 @@ public class StatisticsServiceImpl implements IStatisticsService
             }
 
             // 获取微信小程序的access_token
-            String accessToken = getWxAccessToken();
-
+            String accessToken = getWxAccessToken(false);
             if (StringUtils.isEmpty(accessToken)) {
                 log.error("无法获取微信小程序access_token");
                 Map<String, Object> errorResult = new HashMap<>();
@@ -290,20 +314,60 @@ public class StatisticsServiceImpl implements IStatisticsService
             headers.setContentType(MediaType.APPLICATION_JSON);
 
             String jsonParams = JSON.toJSONString(params);
+            log.info("调用云函数 {}, 参数: {}", functionName, jsonParams);
 
             HttpEntity<String> requestEntity = new HttpEntity<>(jsonParams, headers);
 
             try {
                 // 发送请求
                 ResponseEntity<String> responseEntity = restTemplate.postForEntity(url, requestEntity, String.class);
+                log.info("云函数 {} 响应状态: {}", functionName, responseEntity.getStatusCode());
 
                 if (responseEntity.getStatusCode().is2xxSuccessful()) {
                     String responseBody = responseEntity.getBody();
                     JSONObject responseJson = JSON.parseObject(responseBody);
+                    log.info("云函数 {} 响应内容: {}", functionName, responseBody);
 
                     if (responseJson.getIntValue("errcode") == 0) {
                         String respData = responseJson.getString("resp_data");
-                        return JSON.parseObject(respData, Map.class);
+                        Map<String, Object> result = JSON.parseObject(respData, Map.class);
+                        if (result == null) {
+                            result = new HashMap<>();
+                            result.put("success", true);
+                            result.put("data", new ArrayList<>());
+                            result.put("total", 0);
+                        }
+                        return result;
+                    } else if (responseJson.getIntValue("errcode") == 40001) {
+                        // access_token 无效，尝试强制刷新
+                        log.info("access_token无效，尝试强制刷新");
+                        accessToken = getWxAccessToken(true);
+                        if (StringUtils.isNotEmpty(accessToken)) {
+                            // 使用新的token重试
+                            url = String.format("%s?access_token=%s&env=%s&name=%s",
+                                    WX_CLOUD_FUNCTION_URL, accessToken, wxCloudEnv, functionName);
+                            responseEntity = restTemplate.postForEntity(url, requestEntity, String.class);
+                            responseBody = responseEntity.getBody();
+                            responseJson = JSON.parseObject(responseBody);
+                            log.info("使用新token重试，响应: {}", responseBody);
+                            
+                            if (responseJson.getIntValue("errcode") == 0) {
+                                String respData = responseJson.getString("resp_data");
+                                Map<String, Object> result = JSON.parseObject(respData, Map.class);
+                                if (result == null) {
+                                    result = new HashMap<>();
+                                    result.put("success", true);
+                                    result.put("data", new ArrayList<>());
+                                    result.put("total", 0);
+                                }
+                                return result;
+                            }
+                        }
+                        log.error("微信云函数调用失败，即使刷新token后也失败: {}", responseJson.getString("errmsg"));
+                        Map<String, Object> errorResult = new HashMap<>();
+                        errorResult.put("success", false);
+                        errorResult.put("message", "调用云函数失败: " + responseJson.getString("errmsg"));
+                        return errorResult;
                     } else {
                         log.error("微信云函数调用失败: {}", responseJson.getString("errmsg"));
                         Map<String, Object> errorResult = new HashMap<>();
@@ -320,8 +384,10 @@ public class StatisticsServiceImpl implements IStatisticsService
                 }
             } catch (Exception e) {
                 log.error("调用微信云函数HTTP请求异常: {}", e.getMessage(), e);
-                // 返回一个模拟的结果，使请求不会完全失败
-                return getSimulatedResult(functionName, params);
+                Map<String, Object> errorResult = new HashMap<>();
+                errorResult.put("success", false);
+                errorResult.put("message", "调用云函数HTTP请求异常: " + e.getMessage());
+                return errorResult;
             }
         } catch (Exception e) {
             log.error("调用微信云函数处理异常: {}", e.getMessage(), e);
@@ -333,180 +399,56 @@ public class StatisticsServiceImpl implements IStatisticsService
     }
 
     /**
-     * 获取模拟的云函数调用结果
-     * 用于在实际调用失败时返回一些测试数据
-     */
-    private Map<String, Object> getSimulatedResult(String functionName, Map<String, Object> params) {
-        Map<String, Object> result = new HashMap<>();
-        result.put("success", true);
-
-        if ("getAllBooks".equals(functionName)) {
-            List<Map<String, Object>> books = new ArrayList<>();
-
-            // 添加一些模拟图书数据
-            Map<String, Object> book1 = new HashMap<>();
-            book1.put("id", "1");
-            book1.put("title", "Java编程思想");
-            book1.put("author", "Bruce Eckel");
-            book1.put("publisher", "机械工业出版社");
-            book1.put("price", 108.00);
-            book1.put("stock", 10);
-            book1.put("isbn", "9787111213826");
-            book1.put("category", "计算机");
-            book1.put("description", "Java学习经典，全面介绍Java编程的各个方面。");
-
-            Map<String, Object> book2 = new HashMap<>();
-            book2.put("id", "2");
-            book2.put("title", "离散数学");
-            book2.put("author", "屈婉玲");
-            book2.put("publisher", "高等教育出版社");
-            book2.put("price", 59.00);
-            book2.put("stock", 5);
-            book2.put("isbn", "9787040455243");
-            book2.put("category", "数学");
-            book2.put("description", "计算机专业基础课程教材，讲解离散结构和数学方法。");
-
-            Map<String, Object> book3 = new HashMap<>();
-            book3.put("id", "3");
-            book3.put("title", "算法导论");
-            book3.put("author", "Thomas H. Cormen");
-            book3.put("publisher", "机械工业出版社");
-            book3.put("price", 128.00);
-            book3.put("stock", 3);
-            book3.put("isbn", "9787111407010");
-            book3.put("category", "计算机");
-            book3.put("description", "全面介绍算法设计与分析的经典教材。");
-
-            books.add(book1);
-            books.add(book2);
-            books.add(book3);
-
-            result.put("data", books);
-            result.put("total", 3);
-            result.put("message", "模拟数据：获取了3本图书");
-
-        } else if ("getAllPublishedBooks".equals(functionName)) {
-            List<Map<String, Object>> books = new ArrayList<>();
-
-            // 添加一些模拟发布图书数据
-            Map<String, Object> book1 = new HashMap<>();
-            book1.put("id", "1");
-            book1.put("title", "Java编程思想");
-            book1.put("author", "Bruce Eckel");
-            book1.put("price", 68.00);
-            book1.put("status", 0);  // 0表示在售
-            book1.put("owner", "10001");
-            book1.put("category", "计算机");
-
-            Map<String, Object> book2 = new HashMap<>();
-            book2.put("id", "2");
-            book2.put("title", "深入理解计算机系统");
-            book2.put("author", "Randal E. Bryant");
-            book2.put("price", 88.00);
-            book2.put("status", 0);
-            book2.put("owner", "10002");
-            book2.put("category", "计算机");
-
-            books.add(book1);
-            books.add(book2);
-
-            result.put("data", books);
-            result.put("total", 2);
-            result.put("message", "模拟数据：获取了2本在售图书");
-
-        } else if ("getAllOrders".equals(functionName)) {
-            List<Map<String, Object>> orders = new ArrayList<>();
-
-            // 添加一些模拟订单数据
-            Map<String, Object> order1 = new HashMap<>();
-            order1.put("orderId", "12345");
-            order1.put("userId", "10001");
-            order1.put("status", "已完成");
-            order1.put("totalAmount", 108.00);
-            order1.put("createTime", "2023-06-15 14:30:45");
-
-            Map<String, Object> order2 = new HashMap<>();
-            order2.put("orderId", "12346");
-            order2.put("userId", "10001");
-            order2.put("status", "待发货");
-            order2.put("totalAmount", 59.00);
-            order2.put("createTime", "2023-06-18 09:12:33");
-
-            orders.add(order1);
-            orders.add(order2);
-
-            result.put("data", orders);
-            result.put("total", 2);
-            result.put("message", "模拟数据：获取了2个订单");
-
-        } else if ("getAllUsers".equals(functionName)) {
-            List<Map<String, Object>> users = new ArrayList<>();
-
-            // 添加一些模拟用户数据
-            Map<String, Object> user1 = new HashMap<>();
-            user1.put("userId", "10001");
-            user1.put("nickName", "张三");
-            user1.put("gender", 1);
-            user1.put("registerTime", "2023-01-15 10:30:45");
-
-            Map<String, Object> user2 = new HashMap<>();
-            user2.put("userId", "10002");
-            user2.put("nickName", "李四");
-            user2.put("gender", 1);
-            user2.put("registerTime", "2023-02-18 14:22:33");
-            
-            Map<String, Object> user3 = new HashMap<>();
-            user3.put("userId", "10003");
-            user3.put("nickName", "王五");
-            user3.put("gender", 1);
-            user3.put("registerTime", "2023-03-22 09:15:27");
-
-            users.add(user1);
-            users.add(user2);
-            users.add(user3);
-
-            result.put("data", users);
-            result.put("total", 3);
-            result.put("message", "模拟数据：获取了3个用户");
-
-        } else {
-            // 默认返回空结果
-            result.put("data", new ArrayList<>());
-            result.put("total", 0);
-            result.put("message", "模拟数据：无数据");
-        }
-
-        return result;
-    }
-
-    /**
      * 获取微信小程序access_token
      *
      * @return access_token
      */
-    private String getWxAccessToken() {
+    private String getWxAccessToken(boolean forceRefresh) {
         // 尝试从缓存获取token
         String tokenKey = "wx:access_token:" + wxAppId;
-        String accessToken = redisCache.getCacheObject(tokenKey);
+        String accessToken = null;
         
-        if (StringUtils.isNotEmpty(accessToken)) {
-            return accessToken;
+        if (!forceRefresh) {
+            accessToken = redisCache.getCacheObject(tokenKey);
+            if (StringUtils.isNotEmpty(accessToken)) {
+                log.info("从缓存获取access_token成功");
+                return accessToken;
+            }
+        } else {
+            log.info("强制刷新access_token");
         }
         
         try {
             // 从微信服务器获取新的access_token
-            String appSecret = configService.selectConfigByKey("wx.app.secret");
+            String appSecret = configService.selectConfigByKey("wx.appsecret");
+            log.info("获取到的AppSecret配置: {}", appSecret != null ? "非空" : "为空");
+            
             if (StringUtils.isEmpty(appSecret)) {
-                log.error("未配置微信小程序secret，请在系统配置中设置wx.app.secret");
+                log.error("未配置微信小程序secret，请在系统配置中设置wx.appsecret");
                 return null;
             }
             
-            String url = String.format("https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=%s&secret=%s", wxAppId, appSecret);
+            // 使用新的稳定版接口
+            String url = "https://api.weixin.qq.com/cgi-bin/stable_token";
             
-            ResponseEntity<String> responseEntity = restTemplate.getForEntity(url, String.class);
+            Map<String, Object> requestBody = new HashMap<>();
+            requestBody.put("grant_type", "client_credential");
+            requestBody.put("appid", wxAppId);
+            requestBody.put("secret", appSecret);
+            requestBody.put("force_refresh", forceRefresh);
+            
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            HttpEntity<Map<String, Object>> requestEntity = new HttpEntity<>(requestBody, headers);
+            
+            log.info("开始获取微信access_token，appId: {}, 请求URL: {}, force_refresh: {}", wxAppId, url, forceRefresh);
+            log.info("请求体: {}", JSON.toJSONString(requestBody));
+            
+            ResponseEntity<String> responseEntity = restTemplate.postForEntity(url, requestEntity, String.class);
             
             if (responseEntity.getStatusCode().is2xxSuccessful()) {
                 String responseBody = responseEntity.getBody();
+                log.info("获取access_token响应: {}", responseBody);
                 JSONObject responseJson = JSON.parseObject(responseBody);
                 
                 if (responseJson.containsKey("access_token")) {
@@ -515,11 +457,14 @@ public class StatisticsServiceImpl implements IStatisticsService
                     
                     // 存入缓存，提前5分钟过期
                     redisCache.setCacheObject(tokenKey, accessToken, expiresIn - 300, TimeUnit.SECONDS);
+                    log.info("成功获取新的access_token，有效期: {}秒", expiresIn);
                     
                     return accessToken;
                 } else {
                     log.error("获取微信access_token失败: {}", responseJson.getString("errmsg"));
                 }
+            } else {
+                log.error("获取微信access_token HTTP请求失败: {}", responseEntity.getStatusCode());
             }
         } catch (Exception e) {
             log.error("获取微信access_token异常: {}", e.getMessage(), e);
