@@ -120,6 +120,54 @@
                     </el-carousel>
                   </div>
                 </div>
+                
+                <!-- 统计信息结果 -->
+                <div v-else-if="message.intentData.intent === 'statistics'" class="statistics-info">
+                  <div v-if="message.queryResult.success" class="statistics-data">
+                    <el-card class="statistics-card">
+                      <div slot="header" class="statistics-header">
+                        <span>{{ getStatisticsTitle(message.queryResult.statType) }}</span>
+                        <span v-if="message.queryResult.timeRange" class="time-range">
+                          {{ getTimeRangeText(message.queryResult.timeRange) }}
+                        </span>
+                      </div>
+                      <div class="statistics-value">
+                        <span class="value">{{ message.queryResult.count }}</span>
+                        <span class="unit">{{ getStatisticsUnit(message.queryResult.statType) }}</span>
+                      </div>
+                    </el-card>
+                  </div>
+                </div>
+                
+                <!-- 订单创建结果 -->
+                <div v-else-if="message.intentData.intent === 'order_create'" class="order-create">
+                  <div v-if="message.queryResult.steps && message.queryResult.steps.length > 0" class="order-steps">
+                    <el-steps direction="vertical" :active="message.queryResult.steps.length">
+                      <el-step 
+                        v-for="(step, index) in message.queryResult.steps" 
+                        :key="index" 
+                        :title="`步骤 ${index + 1}`" 
+                        :description="step">
+                      </el-step>
+                    </el-steps>
+                  </div>
+                </div>
+
+                <!-- 在售图书搜索结果 -->
+                <div v-else-if="message.intentData.intent === 'published_book_search'" class="published-book-list">
+                  <el-collapse v-if="message.queryResult.data && message.queryResult.data.length > 0">
+                    <el-collapse-item v-for="(book, idx) in message.queryResult.data" :key="idx" :title="book.title">
+                      <div class="book-detail">
+                        <div class="book-info-row"><span class="info-label">卖家:</span> {{ book.publisher || '个人卖家' }}</div>
+                        <div class="book-info-row"><span class="info-label">作者:</span> {{ book.author }}</div>
+                        <div class="book-info-row"><span class="info-label">价格:</span> ¥{{ book.price }}</div>
+                        <div class="book-info-row"><span class="info-label">成色:</span> {{ book.condition || '二手良好' }}</div>
+                        <div class="book-info-row"><span class="info-label">发布时间:</span> {{ book.publishTime || '未知' }}</div>
+                        <div class="book-description">{{ book.description }}</div>
+                      </div>
+                    </el-collapse-item>
+                  </el-collapse>
+                </div>
               </div>
               
               <!-- 查询失败结果 -->
@@ -216,9 +264,12 @@ export default {
       // 意图映射
       intentMap: {
         'book_search': '图书搜索',
+        'published_book_search': '在售图书搜索',
         'book_info': '图书详情',
         'order_status': '订单状态',
         'book_recommendation': '图书推荐',
+        'statistics': '统计信息',
+        'order_create': '创建订单',
         'unknown': '未知意图'
       },
       // 参数名称映射
@@ -229,7 +280,9 @@ export default {
         'category': '分类',
         'orderId': '订单号',
         'userId': '用户ID',
-        'field': '查询字段'
+        'field': '查询字段',
+        'statType': '统计类型',
+        'timeRange': '时间范围'
       }
     }
   },
@@ -375,6 +428,43 @@ export default {
      */
     formatParamName(paramName) {
       return this.paramNameMap[paramName] || paramName;
+    },
+    /**
+     * 获取统计类型标题
+     */
+    getStatisticsTitle(statType) {
+      const titles = {
+        'users': '用户总数',
+        'orders': '订单总数',
+        'books': '图书总数',
+        'publishedBooks': '在售图书数'
+      };
+      return titles[statType] || '统计信息';
+    },
+    
+    /**
+     * 获取时间范围文本
+     */
+    getTimeRangeText(timeRange) {
+      const ranges = {
+        'today': '(今日)',
+        'month': '(本月)',
+        'year': '(今年)'
+      };
+      return ranges[timeRange] || '';
+    },
+    
+    /**
+     * 获取统计单位
+     */
+    getStatisticsUnit(statType) {
+      const units = {
+        'users': '位',
+        'orders': '个',
+        'books': '本',
+        'publishedBooks': '本'
+      };
+      return units[statType] || '个';
     },
     /**
      * 发送消息到AI服务并获取回复
@@ -975,5 +1065,60 @@ export default {
   margin-top: 0;
   margin-bottom: 10px;
   color: #409EFF;
+}
+
+/* 统计信息样式 */
+.statistics-info {
+  padding: 10px;
+}
+
+.statistics-card {
+  margin-top: 5px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.statistics-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.time-range {
+  font-size: 12px;
+  color: #909399;
+}
+
+.statistics-value {
+  text-align: center;
+  padding: 10px 0;
+}
+
+.statistics-value .value {
+  font-size: 24px;
+  font-weight: bold;
+  color: #409EFF;
+}
+
+.statistics-value .unit {
+  font-size: 14px;
+  color: #606266;
+  margin-left: 4px;
+}
+
+/* 订单创建样式 */
+.order-create {
+  padding: 10px;
+}
+
+.order-steps {
+  background-color: white;
+  border-radius: 6px;
+  padding: 15px;
+  margin-top: 5px;
+}
+
+/* 发布图书样式 */
+.published-book-list {
+  padding: 0 10px 10px 10px;
 }
 </style> 

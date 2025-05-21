@@ -73,6 +73,9 @@ public class IntentProcessorServiceImpl implements IIntentProcessorService
                 case "book_search":
                     intentResult = processBookSearch(parameters);
                     break;
+                case "published_book_search":
+                    intentResult = processPublishedBookSearch(parameters);
+                    break;
                 case "book_info":
                     intentResult = processBookInfo(parameters);
                     break;
@@ -81,6 +84,12 @@ public class IntentProcessorServiceImpl implements IIntentProcessorService
                     break;
                 case "book_recommendation":
                     intentResult = processBookRecommendation(parameters);
+                    break;
+                case "statistics":
+                    intentResult = processStatistics(parameters);
+                    break;
+                case "order_create":
+                    intentResult = processOrderCreate(parameters);
                     break;
                 case "unknown":
                 default:
@@ -412,6 +421,217 @@ public class IntentProcessorServiceImpl implements IIntentProcessorService
             result.put("message", cloudFunctionResult != null ? cloudFunctionResult.get("message") : "获取图书推荐失败");
         }
 
+        return result;
+    }
+
+    /**
+     * 处理发布图书搜索意图
+     */
+    public Map<String, Object> processPublishedBookSearch(Map<String, Object> parameters)
+    {
+        String bookName = (String) parameters.get("bookName");
+        String author = (String) parameters.get("author");
+        String isbn = (String) parameters.get("isbn");
+        String category = (String) parameters.get("category");
+
+        // 调用微信云函数查询发布的图书
+        Map<String, Object> cloudFunctionResult = invokeCloudFunction("getAllPublishedBooks", new HashMap<>());
+
+        Map<String, Object> result = new HashMap<>();
+
+        if (cloudFunctionResult != null && cloudFunctionResult.containsKey("success") && (Boolean) cloudFunctionResult.get("success")) {
+            List<Map<String, Object>> allBooks = (List<Map<String, Object>>) cloudFunctionResult.get("data");
+            
+            // 在本地过滤结果
+            List<Map<String, Object>> filteredBooks = new ArrayList<>();
+            if (allBooks != null && !allBooks.isEmpty()) {
+                for (Map<String, Object> book : allBooks) {
+                    boolean matches = true;
+                    
+                    if (StringUtils.isNotEmpty(bookName)) {
+                        String title = (String) book.get("title");
+                        if (title == null || !title.toLowerCase().contains(bookName.toLowerCase())) {
+                            matches = false;
+                        }
+                    }
+                    
+                    if (matches && StringUtils.isNotEmpty(author)) {
+                        String bookAuthor = (String) book.get("author");
+                        if (bookAuthor == null || !bookAuthor.toLowerCase().contains(author.toLowerCase())) {
+                            matches = false;
+                        }
+                    }
+                    
+                    if (matches && StringUtils.isNotEmpty(isbn)) {
+                        String bookIsbn = (String) book.get("isbn");
+                        if (bookIsbn == null || !bookIsbn.equals(isbn)) {
+                            matches = false;
+                        }
+                    }
+                    
+                    if (matches && StringUtils.isNotEmpty(category)) {
+                        String bookCategory = (String) book.get("category");
+                        if (bookCategory == null || !bookCategory.toLowerCase().contains(category.toLowerCase())) {
+                            matches = false;
+                        }
+                    }
+                    
+                    if (matches) {
+                        filteredBooks.add(book);
+                    }
+                }
+            }
+            
+            result.put("success", true);
+            result.put("count", filteredBooks.size());
+            result.put("data", filteredBooks);
+            
+            if (filteredBooks.isEmpty()) {
+                result.put("message", "未找到符合条件的在售图书");
+            } else {
+                result.put("message", String.format("找到%d本符合条件的在售图书", filteredBooks.size()));
+            }
+        } else {
+            result.put("success", false);
+            result.put("message", cloudFunctionResult != null ? cloudFunctionResult.get("message") : "查询在售图书失败");
+        }
+        
+        return result;
+    }
+
+    /**
+     * 处理信息统计意图
+     */
+    public Map<String, Object> processStatistics(Map<String, Object> parameters)
+    {
+        String statType = (String) parameters.get("statType");
+        String timeRange = (String) parameters.get("timeRange");
+
+        Map<String, Object> result = new HashMap<>();
+        
+        // 参数标准化处理
+        if ("totalUsers".equals(statType)) {
+            statType = "users";
+        }
+        
+        // 根据统计类型进行不同的处理
+        switch (statType) {
+            case "users":
+                // 获取用户统计
+                Map<String, Object> usersResult = invokeCloudFunction("getAllUsers", new HashMap<>());
+                if (usersResult != null && usersResult.containsKey("success") && (Boolean) usersResult.get("success")) {
+                    List<Map<String, Object>> users = (List<Map<String, Object>>) usersResult.get("data");
+                    int userCount = users != null ? users.size() : 0;
+                    
+                    result.put("success", true);
+                    result.put("statType", "users");
+                    result.put("count", userCount);
+                    result.put("message", String.format("平台当前共有%d位用户", userCount));
+                } else {
+                    result.put("success", false);
+                    result.put("message", "获取用户统计信息失败");
+                }
+                break;
+                
+            case "orders":
+                // 获取订单统计
+                Map<String, Object> ordersResult = invokeCloudFunction("getAllOrders", new HashMap<>());
+                if (ordersResult != null && ordersResult.containsKey("success") && (Boolean) ordersResult.get("success")) {
+                    List<Map<String, Object>> orders = (List<Map<String, Object>>) ordersResult.get("data");
+                    int orderCount = orders != null ? orders.size() : 0;
+                    
+                    // 如果指定了时间范围，进行过滤
+                    if (StringUtils.isNotEmpty(timeRange)) {
+                        // 简单实现，实际应该根据具体的时间范围格式进行解析
+                        result.put("timeRange", timeRange);
+                    }
+                    
+                    result.put("success", true);
+                    result.put("statType", "orders");
+                    result.put("count", orderCount);
+                    result.put("message", String.format("平台当前共有%d个订单", orderCount));
+                } else {
+                    result.put("success", false);
+                    result.put("message", "获取订单统计信息失败");
+                }
+                break;
+                
+            case "books":
+                // 获取图书统计
+                Map<String, Object> booksResult = invokeCloudFunction("getAllBooks", new HashMap<>());
+                if (booksResult != null && booksResult.containsKey("success") && (Boolean) booksResult.get("success")) {
+                    List<Map<String, Object>> books = (List<Map<String, Object>>) booksResult.get("data");
+                    int bookCount = books != null ? books.size() : 0;
+                    
+                    result.put("success", true);
+                    result.put("statType", "books");
+                    result.put("count", bookCount);
+                    result.put("message", String.format("平台当前共有%d本图书", bookCount));
+                } else {
+                    result.put("success", false);
+                    result.put("message", "获取图书统计信息失败");
+                }
+                break;
+                
+            case "publishedBooks":
+                // 获取发布图书统计
+                Map<String, Object> publishedBooksResult = invokeCloudFunction("getAllPublishedBooks", new HashMap<>());
+                if (publishedBooksResult != null && publishedBooksResult.containsKey("success") && (Boolean) publishedBooksResult.get("success")) {
+                    List<Map<String, Object>> publishedBooks = (List<Map<String, Object>>) publishedBooksResult.get("data");
+                    int publishedBookCount = publishedBooks != null ? publishedBooks.size() : 0;
+                    
+                    result.put("success", true);
+                    result.put("statType", "publishedBooks");
+                    result.put("count", publishedBookCount);
+                    result.put("message", String.format("平台当前共有%d本在售图书", publishedBookCount));
+                } else {
+                    result.put("success", false);
+                    result.put("message", "获取在售图书统计信息失败");
+                }
+                break;
+                
+            default:
+                result.put("success", false);
+                result.put("message", "不支持的统计类型: " + statType);
+                break;
+        }
+        
+        return result;
+    }
+
+    /**
+     * 处理创建订单意图
+     */
+    public Map<String, Object> processOrderCreate(Map<String, Object> parameters)
+    {
+        String bookName = (String) parameters.get("bookName");
+        String userId = (String) parameters.get("userId");
+        
+        Map<String, Object> result = new HashMap<>();
+        
+        // 验证必要参数
+        if (StringUtils.isEmpty(bookName)) {
+            result.put("success", false);
+            result.put("message", "创建订单需要指定图书名称");
+            return result;
+        }
+        
+        // 在实际应用中，可能需要检查图书是否存在，用户是否有效等
+        // 这里只给出指导信息
+        result.put("success", true);
+        result.put("intent", "order_create");
+        result.put("message", String.format("要购买《%s》，请前往图书详情页面点击'购买'按钮创建订单", bookName));
+        
+        // 添加指导步骤
+        List<String> steps = new ArrayList<>();
+        steps.add("在首页搜索栏输入图书名称");
+        steps.add("在搜索结果中找到想要购买的图书");
+        steps.add("点击图书封面进入详情页");
+        steps.add("点击'加入购物车'或'立即购买'按钮");
+        steps.add("确认订单信息并提交");
+        
+        result.put("steps", steps);
+        
         return result;
     }
 

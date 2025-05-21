@@ -8,15 +8,18 @@ const DEFAULT_CONFIG = {
   // 系统角色提示词
   systemPrompt: "你是一个校园二手书交易平台的AI助手，你的职责是分析用户自然语言查询意图，并将其转换为结构化JSON格式。\n\n" +
                 "支持的查询类型包括：\n" +
-                "1. 图书搜索 (book_search) - 查询图书是否存在\n" +
-                "2. 图书详情 (book_info) - 获取某本书的库存、价格等信息\n" +
-                "3. 订单状态 (order_status) - 查询订单状态\n" +
-                "4. 图书推荐 (book_recommendation) - 获取图书推荐\n\n" +
+                "1. 图书搜索 (book_search) - 查询系统图书库存是否存在某本图书\n" +
+                "2. 发布图书搜索 (published_book_search) - 查询是否有用户发布在售的特定图书\n" +
+                "3. 图书详情 (book_info) - 获取某本书的库存、价格等详细信息\n" +
+                "4. 订单状态 (order_status) - 查询订单状态\n" +
+                "5. 图书推荐 (book_recommendation) - 获取图书推荐\n" +
+                "6. 信息统计 (statistics) - 获取平台统计信息，如总用户数、总订单量、图书销量等\n" +
+                "7. 创建订单 (order_create) - 指导用户创建新的购书订单\n\n" +
                 "你必须始终返回以下结构的JSON：\n" +
                 "{\n" +
-                "  \"intent\": \"意图类型\",  // 必须是以下值之一: book_search, book_info, order_status, book_recommendation, unknown\n" +
+                "  \"intent\": \"意图类型\",  // 必须是以下值之一: book_search, published_book_search, book_info, order_status, book_recommendation, statistics, order_create, unknown\n" +
                 "  \"parameters\": {  // 提取自用户问题的参数\n" +
-                "    // 可能的参数包括: bookName, author, isbn, category, orderId, userId等\n" +
+                "    // 可能的参数包括: bookName, author, isbn, category, orderId, userId, timeRange, statType等\n" +
                 "  }\n" +
                 "}\n\n" +
                 "例如，对于\"有没有离散数学这本书\"，应该返回：\n" +
@@ -26,11 +29,26 @@ const DEFAULT_CONFIG = {
                 "    \"bookName\": \"离散数学\"\n" +
                 "  }\n" +
                 "}\n\n" +
-                "请记住：\n" +
+                "对于\"有用户在出售Java编程思想这本书吗\"，应该返回：\n" +
+                "{\n" +
+                "  \"intent\": \"published_book_search\",\n" +
+                "  \"parameters\": {\n" +
+                "    \"bookName\": \"Java编程思想\"\n" +
+                "  }\n" +
+                "}\n\n" +
+                "对于\"平台总共有多少用户\"，应该返回：\n" +
+                "{\n" +
+                "  \"intent\": \"statistics\",\n" +
+                "  \"parameters\": {\n" +
+                "    \"statType\": \"users\"\n" +
+                "  }\n" +
+                "}\n\n" +
+                "注意事项：\n" +
                 "- 你只负责提取意图和参数，不要执行实际查询\n" +
                 "- 只返回JSON格式数据，不要添加任何其他文字或解释\n" +
                 "- 如果无法识别意图，将intent设为unknown并保持parameters为空对象{}\n" +
-                "- 你的回复必须是一个有效的JSON",
+                "- 你的回复必须是一个有效的JSON\n" +
+                "- 统计意图(statistics)的statType参数值只能是以下几种：users(用户统计)、orders(订单统计)、books(图书统计)、publishedBooks(在售图书统计)",
   
   // 温度参数（控制创造性，0-1之间）
   temperature: 0.3, // 降低温度，使输出更可预测
@@ -126,7 +144,14 @@ export function getSimulatedResponse(message) {
       cleanMessage.includes("有没有") || cleanMessage.includes("找") || 
       cleanMessage.includes("查询") || cleanMessage.includes("搜索")) {
     
-    response.intent = "book_search";
+    // 区分是普通图书查询还是发布图书查询
+    if (cleanMessage.includes("在售") || cleanMessage.includes("发布") || 
+        cleanMessage.includes("出售") || cleanMessage.includes("卖") || 
+        cleanMessage.includes("二手")) {
+      response.intent = "published_book_search";
+    } else {
+      response.intent = "book_search";
+    }
     
     // 尝试提取书名 - 方法1: 引号括起来的部分
     if (message.includes("《") && message.includes("》")) {
@@ -156,7 +181,7 @@ export function getSimulatedResponse(message) {
     else {
       // 从消息中去掉常见的问句，找出可能的书名
       const cleanedText = message
-        .replace(/有没有|查一下|帮我找|我想要|有关于|搜索|查询|请问|书籍|图书/g, '')
+        .replace(/有没有|查一下|帮我找|我想要|有关于|搜索|查询|请问|书籍|图书|在售|出售|二手/g, '')
         .trim();
         
       if (cleanedText && cleanedText.length < 20) { // 假设书名不会太长
@@ -255,6 +280,62 @@ export function getSimulatedResponse(message) {
         }
       }
       if (response.parameters.category) break;
+    }
+  }
+  else if (cleanMessage.includes("统计") || 
+          (cleanMessage.includes("多少") && 
+           (cleanMessage.includes("用户") || cleanMessage.includes("图书") || 
+            cleanMessage.includes("订单") || cleanMessage.includes("销量")))) {
+    response.intent = "statistics";
+    
+    // 确定统计类型
+    if (cleanMessage.includes("用户") || cleanMessage.includes("会员") || 
+        cleanMessage.includes("用户总数") || cleanMessage.includes("总共有多少用户")) {
+      response.parameters.statType = "users";
+    } else if (cleanMessage.includes("订单")) {
+      response.parameters.statType = "orders";
+    } else if (cleanMessage.includes("发布") || cleanMessage.includes("在售") || cleanMessage.includes("二手")) {
+      response.parameters.statType = "publishedBooks";
+    } else if (cleanMessage.includes("图书") || cleanMessage.includes("书")) {
+      response.parameters.statType = "books";
+    }
+    
+    // 尝试提取时间范围
+    if (cleanMessage.includes("本月") || cleanMessage.includes("这个月")) {
+      response.parameters.timeRange = "month";
+    } else if (cleanMessage.includes("今年") || cleanMessage.includes("本年")) {
+      response.parameters.timeRange = "year"; 
+    } else if (cleanMessage.includes("今天") || cleanMessage.includes("今日")) {
+      response.parameters.timeRange = "today";
+    }
+  }
+  else if ((cleanMessage.includes("购买") || cleanMessage.includes("买") || 
+          cleanMessage.includes("下单") || cleanMessage.includes("订购")) && 
+          (cleanMessage.includes("书") || cleanMessage.includes("图书"))) {
+    response.intent = "order_create";
+    
+    // 提取图书名称
+    if (message.includes("《") && message.includes("》")) {
+      const bookName = message.substring(message.indexOf("《") + 1, message.indexOf("》"));
+      if (bookName) {
+        response.parameters.bookName = bookName;
+      }
+    } else {
+      // 尝试提取书名 (简化版)
+      const commonTerms = ["购买", "买", "下单", "订购", "订单", "怎么", "如何"];
+      let possibleBook = message;
+      
+      for (const term of commonTerms) {
+        if (cleanMessage.includes(term)) {
+          possibleBook = possibleBook.replace(new RegExp(term, 'g'), "");
+        }
+      }
+      
+      possibleBook = possibleBook.replace(/这本书|这本|请问|的|是/g, "").trim();
+      
+      if (possibleBook && possibleBook.length < 20) {
+        response.parameters.bookName = possibleBook;
+      }
     }
   }
   
