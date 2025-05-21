@@ -1,7 +1,7 @@
 <template>
   <div class="ai-chat-container" :class="{ 'is-collapsed': isCollapsed }" :style="containerStyle">
     <div class="chat-header" @mousedown="startDrag">
-      <span class="chat-title">AI助手</span>
+      <span class="chat-title">智能查询助手</span>
       <div class="chat-actions">
         <el-button type="text" icon="el-icon-minus" @click.stop="closeChat"></el-button>
       </div>
@@ -15,7 +15,26 @@
             <i :class="message.isUser ? 'el-icon-user' : 'el-icon-service'"></i>
           </div>
           <div class="message-content">
-            <div class="message-text" v-html="formatMessage(message.content)"></div>
+            <div v-if="message.isUser || !message.intentData" class="message-text" v-html="formatMessage(message.content)"></div>
+            <div v-else class="intent-data">
+              <div class="intent-type">
+                <el-tag size="small" :type="getIntentTagType(message.intentData.intent)">
+                  {{ getIntentName(message.intentData.intent) }}
+                </el-tag>
+              </div>
+              <div v-if="Object.keys(message.intentData.parameters).length > 0" class="intent-params">
+                <div v-for="(value, key) in message.intentData.parameters" :key="key" class="param-item">
+                  <span class="param-name">{{ formatParamName(key) }}:</span>
+                  <span class="param-value">{{ value }}</span>
+                </div>
+              </div>
+              <div v-else class="no-params">
+                未识别到有效参数
+              </div>
+              <div v-if="message.intentData.intent === 'unknown'" class="unknown-message">
+                未能识别查询意图，请尝试更明确的问题
+              </div>
+            </div>
             <div class="message-time">{{ message.time }}</div>
           </div>
         </div>
@@ -30,18 +49,31 @@
         <el-input
           type="textarea"
           :rows="2"
-          placeholder="请输入问题..."
+          placeholder="请输入您的查询..."
           v-model="inputMessage"
           class="custom-textarea"
           @keyup.enter.native.exact="sendMessage"
         ></el-input>
         <el-button type="primary" icon="el-icon-s-promotion" @click="sendMessage" :loading="isLoading">发送</el-button>
       </div>
+      
+      <div class="chat-help">
+        <p class="help-title">你可以询问这些问题：</p>
+        <ul class="help-examples">
+          <li>《Java编程思想》这本书有库存吗？</li>
+          <li>查询订单号12345的状态</li>
+          <li>推荐几本计算机类的书籍</li>
+          <li>《时间简史》的价格是多少？</li>
+        </ul>
+      </div>
     </div>
   </div>
 </template>
 
 <script>
+import { sendMessageToAI, sendMessageToThirdPartyAI } from '@/api/ai'
+import aiService from '@/utils/ai-service'
+
 export default {
   name: 'AIChat',
   props: {
@@ -57,9 +89,10 @@ export default {
       isLoading: false,
       messages: [
         {
-          content: '您好！我是AI助手，有什么可以帮助您的？',
+          content: '您好！我是智能查询助手，可以帮您查询图书信息、订单状态等。请输入您的问题。',
           isUser: false,
-          time: this.getCurrentTime()
+          time: this.getCurrentTime(),
+          intentData: null
         }
       ],
       // 拖动相关数据
@@ -71,6 +104,33 @@ export default {
       dragOffset: {
         x: 0,
         y: 0
+      },
+      // AI服务配置
+      aiConfig: {
+        ...aiService.DEFAULT_CONFIG,
+        useDirectApi: false, // 是否直接调用第三方API而不经过后端
+        apiKey: '', // API密钥
+      },
+      // 错误处理
+      hasError: false,
+      errorMessage: '',
+      // 意图映射
+      intentMap: {
+        'book_search': '图书搜索',
+        'book_info': '图书详情',
+        'order_status': '订单状态',
+        'book_recommendation': '图书推荐',
+        'unknown': '未知意图'
+      },
+      // 参数名称映射
+      paramNameMap: {
+        'bookName': '书名',
+        'author': '作者',
+        'isbn': 'ISBN',
+        'category': '分类',
+        'orderId': '订单号',
+        'userId': '用户ID',
+        'field': '查询字段'
       }
     }
   },
@@ -102,6 +162,9 @@ export default {
     
     // 监听窗口大小变化
     window.addEventListener('resize', this.updateInitialPosition);
+    
+    // 获取AI配置
+    this.getAIConfig();
   },
   beforeDestroy() {
     document.removeEventListener('mousemove', this.onDrag);
@@ -109,6 +172,26 @@ export default {
     window.removeEventListener('resize', this.updateInitialPosition);
   },
   methods: {
+    /**
+     * 获取AI配置信息
+     */
+    async getAIConfig() {
+      try {
+        // 实际项目中可以从后端获取配置
+        // const res = await getAIConfig();
+        // if (res.data && res.code === 200) {
+        //   this.aiConfig = { ...this.aiConfig, ...res.data };
+        // }
+        
+        // 这里仅设置默认配置
+        this.aiConfig = {
+          ...this.aiConfig,
+          apiKey: aiService.getApiKey()
+        };
+      } catch (error) {
+        console.error('获取AI配置失败:', error);
+      }
+    },
     updateInitialPosition() {
       if (!this.isDragging) {
         // 只在没有拖动时更新初始位置
@@ -169,6 +252,149 @@ export default {
     formatMessage(content) {
       return content.replace(/\n/g, '<br>');
     },
+    /**
+     * 根据意图类型获取标签类型
+     */
+    getIntentTagType(intent) {
+      const typeMap = {
+        'book_search': 'primary',
+        'book_info': 'success',
+        'order_status': 'warning',
+        'book_recommendation': 'info',
+        'unknown': 'danger'
+      };
+      return typeMap[intent] || 'info';
+    },
+    /**
+     * 获取意图名称
+     */
+    getIntentName(intent) {
+      return this.intentMap[intent] || intent;
+    },
+    /**
+     * 格式化参数名称
+     */
+    formatParamName(paramName) {
+      return this.paramNameMap[paramName] || paramName;
+    },
+    /**
+     * 发送消息到AI服务并获取回复
+     */
+    async getAIResponse(userMessage) {
+      try {
+        this.hasError = false;
+        this.errorMessage = '';
+        
+        // 截断过长的消息
+        const trimmedMessage = aiService.truncateMessage(userMessage);
+        
+        // 构建对话历史
+        const chatHistory = aiService.buildChatHistory(
+          this.messages, 
+          this.aiConfig.systemPrompt,
+          this.aiConfig.maxHistoryLength
+        );
+        
+        let response;
+        try {
+          if (this.aiConfig.useDirectApi) {
+            // 直接调用第三方API
+            response = await sendMessageToThirdPartyAI({
+              message: trimmedMessage,
+              history: chatHistory,
+              model: this.aiConfig.model,
+              temperature: this.aiConfig.temperature,
+              max_tokens: this.aiConfig.maxTokens
+            });
+          } else {
+            // 通过后端调用
+            response = await sendMessageToAI({
+              message: trimmedMessage,
+              history: chatHistory
+            });
+            
+            // 适配若依框架返回数据格式
+            // 在控制台打印详细日志，帮助调试
+            console.log('后端返回完整数据:', response);
+            
+            // 检查response数据结构
+            if (response && response.data) {
+              console.log('提取的data数据:', response.data);
+              // 若依框架返回的数据是在data字段里的
+              response = response.data;
+            }
+          }
+          
+          // 处理响应 - 现在返回的是JSON字符串
+          if (response && response.content) {
+            console.log('从响应中提取的内容:', response.content);
+            
+            try {
+              // 尝试解析JSON响应
+              const intentData = JSON.parse(response.content);
+              console.log('解析后的意图数据:', intentData);
+              
+              // 如果解析成功且格式正确，直接返回意图数据
+              if (intentData && intentData.intent) {
+                // 如果意图为unknown且不是关于图书或订单的查询，则不返回响应
+                if (intentData.intent === 'unknown') {
+                  if (!userMessage.includes('图书') && !userMessage.includes('书') && 
+                      !userMessage.includes('订单') && !userMessage.includes('推荐')) {
+                    return null; // 不返回任何响应
+                  }
+                }
+                return {
+                  responseText: "", // 不再需要文本响应
+                  intentData: intentData
+                };
+              }
+            } catch (jsonError) {
+              console.error('解析意图JSON失败:', jsonError);
+              // 如果解析失败，可能不是有效的JSON，忽略并返回原始内容
+            }
+            
+            // 如果不是有效的JSON或解析失败，仍然返回纯文本响应（兼容旧版）
+            return {
+              responseText: aiService.formatAIResponse(response.content),
+              intentData: null
+            };
+          } else {
+            console.error('无法从响应中提取内容，原始响应:', response);
+            throw new Error(response?.message || '获取AI回复失败，无法解析响应数据');
+          }
+        } catch (error) {
+          // 如果API调用失败，使用本地模拟响应
+          console.warn('AI API调用失败，使用本地模拟响应:', error);
+          
+          // 模拟响应已经是JSON字符串，尝试解析
+          const simulatedResponse = aiService.getSimulatedResponse(trimmedMessage);
+          try {
+            const intentData = JSON.parse(simulatedResponse);
+            return {
+              responseText: "",
+              intentData: intentData
+            };
+          } catch (jsonError) {
+            console.error('解析模拟响应JSON失败:', jsonError);
+            return {
+              responseText: "抱歉，无法处理您的请求。",
+              intentData: null
+            };
+          }
+        }
+      } catch (error) {
+        console.error('AI服务错误:', error);
+        this.hasError = true;
+        this.errorMessage = error.message || '无法连接到AI服务，请稍后再试';
+        return {
+          responseText: '抱歉，AI服务暂时无法回应，请稍后再试。',
+          intentData: null
+        };
+      }
+    },
+    /**
+     * 发送消息并获取回复
+     */
     async sendMessage(e) {
       if (e && e.type === 'keyup' && e.shiftKey) {
         return;
@@ -176,41 +402,47 @@ export default {
       
       if (!this.inputMessage.trim()) return;
       
+      // 添加用户消息
+      const userMessage = this.inputMessage.trim();
       this.messages.push({
-        content: this.inputMessage,
+        content: userMessage,
         isUser: true,
-        time: this.getCurrentTime()
+        time: this.getCurrentTime(),
+        intentData: null
       });
       
-      const userMessage = this.inputMessage;
       this.inputMessage = '';
       this.isLoading = true;
       
-      setTimeout(() => {
-        this.simulateAIResponse(userMessage);
+      try {
+        // 获取AI回复
+        const aiResponse = await this.getAIResponse(userMessage);
+        
+        // 如果响应为null，表示超出范围，不显示回复
+        if (aiResponse === null) {
+          this.isLoading = false;
+          return;
+        }
+        
+        // 添加AI回复到消息列表
+        this.messages.push({
+          content: aiResponse.responseText || "",
+          isUser: false,
+          time: this.getCurrentTime(),
+          intentData: aiResponse.intentData
+        });
+      } catch (error) {
+        // 错误处理
+        console.error('处理消息失败:', error);
+        this.messages.push({
+          content: '抱歉，发生了错误，无法获取回复。',
+          isUser: false,
+          time: this.getCurrentTime(),
+          intentData: null
+        });
+      } finally {
         this.isLoading = false;
-      }, 1000);
-    },
-    simulateAIResponse(message) {
-      let response = '';
-      
-      if (message.includes('图书') || message.includes('书籍')) {
-        response = '您好，校园二手书交易平台支持多种图书分类和交易方式。您可以在发布管理中查看和管理图书信息。';
-      } else if (message.includes('订单') || message.includes('交易')) {
-        response = '校园二手书交易订单分为多种状态：在售、买家已付款、交易完成等。您可以在订单管理中查看详情。';
-      } else if (message.includes('用户') || message.includes('账户')) {
-        response = '用户管理功能位于系统管理菜单下，您可以在那里管理用户权限和信息。';
-      } else if (message.includes('帮助') || message.includes('使用说明')) {
-        response = '校园二手书交易平台管理系统使用指南：\n1. 基础信息管理：维护图书基本信息\n2. 发布管理：管理用户发布的二手书\n3. 订单管理：跟踪交易订单状态\n4. 系统管理：用户、角色和权限设置';
-      } else {
-        response = '我是校园二手书交易平台的AI助手，可以回答关于图书管理、订单处理、用户管理等方面的问题。请问有什么可以帮您的？';
       }
-      
-      this.messages.push({
-        content: response,
-        isUser: false,
-        time: this.getCurrentTime()
-      });
     }
   }
 }
@@ -286,7 +518,7 @@ export default {
 .chat-body {
   display: flex;
   flex-direction: column;
-  height: 450px;
+  height: 500px;
 }
 
 .chat-messages {
@@ -465,5 +697,71 @@ export default {
   0% { transform: translateY(0); }
   50% { transform: translateY(-5px); }
   100% { transform: translateY(0); }
+}
+
+.intent-data {
+  background-color: #f8f9fa;
+  padding: 10px;
+  border-radius: 8px;
+  border-left: 3px solid #409EFF;
+}
+
+.intent-type {
+  margin-bottom: 8px;
+}
+
+.intent-params {
+  margin-top: 5px;
+}
+
+.param-item {
+  margin: 5px 0;
+  font-size: 13px;
+}
+
+.param-name {
+  font-weight: bold;
+  color: #606266;
+  margin-right: 4px;
+}
+
+.param-value {
+  color: #333;
+}
+
+.no-params {
+  font-style: italic;
+  color: #999;
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+.unknown-message {
+  color: #f56c6c;
+  margin-top: 8px;
+  font-size: 13px;
+}
+
+.chat-help {
+  padding: 10px 15px;
+  background-color: #fafafa;
+  border-top: 1px dashed #eee;
+  font-size: 12px;
+}
+
+.help-title {
+  font-weight: bold;
+  color: #606266;
+  margin-bottom: 5px;
+}
+
+.help-examples {
+  margin: 0;
+  padding-left: 20px;
+  color: #909399;
+  
+  li {
+    margin-bottom: 3px;
+  }
 }
 </style> 
