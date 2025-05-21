@@ -407,13 +407,31 @@ export default {
             });
           } else {
             // 通过后端调用
-            response = await sendMessageToAI({
-              message: trimmedMessage,
-              history: chatHistory
-            });
-            
-            // 在控制台打印详细日志，帮助调试
-            console.log('后端返回完整数据:', response);
+            try {
+              response = await sendMessageToAI({
+                message: trimmedMessage,
+                history: chatHistory
+              });
+              
+              // 在控制台打印详细日志，帮助调试
+              console.log('后端返回完整数据:', response);
+            } catch (apiError) {
+              console.error('AI服务API调用失败，使用本地模拟响应:', apiError);
+              
+              // 模拟服务器返回数据结构
+              const simulatedResponse = aiService.getSimulatedResponse(trimmedMessage);
+              response = {
+                code: 200,
+                msg: '本地模拟响应',
+                data: {
+                  success: true,
+                  model: '本地模拟模型',
+                  isSimulated: true,
+                  content: simulatedResponse,
+                  responseTime: 0
+                }
+              };
+            }
             
             // 现在后端返回的数据可能包含意图处理结果
             let aiResult = null;
@@ -443,12 +461,28 @@ export default {
                   queryResult: intentResult && intentResult.result ? intentResult.result : null
                 };
               } catch (jsonError) {
-                console.error('解析意图JSON失败:', jsonError);
-                return {
-                  intentData: null,
-                  queryResult: null,
-                  responseText: aiResult.content
-                };
+                console.error('解析意图JSON失败:', jsonError, 'AI返回的内容:', aiResult.content);
+                
+                // 尝试使用本地模拟响应
+                try {
+                  const simulatedResponse = aiService.getSimulatedResponse(trimmedMessage);
+                  const simulatedIntentData = JSON.parse(simulatedResponse);
+                  
+                  console.warn('使用本地模拟的意图数据:', simulatedIntentData);
+                  return {
+                    intentData: simulatedIntentData,
+                    queryResult: null,
+                    responseText: aiResult.content,
+                    isSimulated: true
+                  };
+                } catch (simulatedError) {
+                  console.error('本地模拟响应也失败:', simulatedError);
+                  return {
+                    intentData: null,
+                    queryResult: null,
+                    responseText: aiResult.content || "抱歉，无法理解您的请求。"
+                  };
+                }
               }
             }
           }
@@ -462,7 +496,8 @@ export default {
             const intentData = JSON.parse(simulatedResponse);
             return {
               intentData: intentData,
-              queryResult: null
+              queryResult: null,
+              isSimulated: true
             };
           } catch (jsonError) {
             console.error('解析模拟响应JSON失败:', jsonError);

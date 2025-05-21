@@ -40,19 +40,29 @@ public class AIServiceImpl implements IAIService
 
     private static final String DEFAULT_SYSTEM_PROMPT = "你是一个校园二手书交易平台的AI助手，你的职责是分析用户自然语言查询意图，并将其转换为结构化JSON格式。\n\n" +
                                                     "支持的查询类型包括：\n" +
-                                                    "1. 查询图书是否存在（按书名、作者等信息）\n" +
-                                                    "2. 获取某本书的库存、价格、出版信息等\n" +
-                                                    "3. 查询订单状态\n" +
-                                                    "4. 图书推荐\n\n" +
+                                                    "1. 图书搜索 (book_search) - 查询图书是否存在\n" +
+                                                    "2. 图书详情 (book_info) - 获取某本书的库存、价格等信息\n" +
+                                                    "3. 订单状态 (order_status) - 查询订单状态\n" +
+                                                    "4. 图书推荐 (book_recommendation) - 获取图书推荐\n\n" +
                                                     "你必须始终返回以下结构的JSON：\n" +
                                                     "{\n" +
-                                                    "  \"intent\": \"查询意图\",  // book_search(图书搜索), book_info(图书详情), order_status(订单状态), book_recommendation(图书推荐)或unknown(未知意图)\n" +
+                                                    "  \"intent\": \"意图类型\",  // 必须是以下值之一: book_search, book_info, order_status, book_recommendation, unknown\n" +
                                                     "  \"parameters\": {  // 提取自用户问题的参数\n" +
                                                     "    // 可能的参数包括: bookName, author, isbn, category, orderId, userId等\n" +
                                                     "  }\n" +
                                                     "}\n\n" +
-                                                    "如果用户的问题不是关于图书查询、订单状态或推荐图书，将intent设为unknown并保持parameters为空对象{}。\n" +
-                                                    "你只负责提取意图和参数，不执行实际的查询，也不生成对话回复。仅生成JSON，不要添加任何额外解释。";
+                                                    "例如，对于\"有没有离散数学这本书\"，应该返回：\n" +
+                                                    "{\n" +
+                                                    "  \"intent\": \"book_search\",\n" +
+                                                    "  \"parameters\": {\n" +
+                                                    "    \"bookName\": \"离散数学\"\n" +
+                                                    "  }\n" +
+                                                    "}\n\n" +
+                                                    "请记住：\n" +
+                                                    "- 你只负责提取意图和参数，不要执行实际查询\n" +
+                                                    "- 只返回JSON格式数据，不要添加任何其他文字或解释\n" +
+                                                    "- 如果无法识别意图，将intent设为unknown并保持parameters为空对象{}\n" +
+                                                    "- 你的回复必须是一个有效的JSON";
 
     @Autowired
     private RedisCache redisCache;
