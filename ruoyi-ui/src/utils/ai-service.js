@@ -236,7 +236,12 @@ export function getSimulatedResponse(message) {
   else if (cleanMessage.includes("价格") || cleanMessage.includes("多少钱") || 
            cleanMessage.includes("库存") || cleanMessage.includes("出版社") || 
            cleanMessage.includes("出版")) {
-    response.intent = "book_info";
+    // 所有价格查询都默认识别为published_book_search
+    if (cleanMessage.includes("价格") || cleanMessage.includes("多少钱")) {
+      response.intent = "published_book_search";
+    } else {
+      response.intent = "book_info";
+    }
     
     // 提取书名 (与前面类似)
     if (message.includes("《") && message.includes("》")) {

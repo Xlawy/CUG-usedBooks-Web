@@ -1,54 +1,58 @@
 <template>
   <el-row :gutter="40" class="panel-group">
     <el-col :xs="12" :sm="12" :lg="6" class="card-panel-col">
-      <div class="card-panel" @click="handleSetLineChartData('newVisitis')">
+      <div class="card-panel" @click="handleSetLineChartData('users')">
         <div class="card-panel-icon-wrapper icon-people">
           <svg-icon icon-class="peoples" class-name="card-panel-icon" />
         </div>
         <div class="card-panel-description">
           <div class="card-panel-text">
-            访客
+            用户总数
           </div>
-          <count-to :start-val="0" :end-val="102400" :duration="2600" class="card-panel-num" />
+          <count-to :start-val="0" :end-val="statistics.users" :duration="2600" class="card-panel-num" />
+          <span class="unit">位</span>
         </div>
       </div>
     </el-col>
     <el-col :xs="12" :sm="12" :lg="6" class="card-panel-col">
-      <div class="card-panel" @click="handleSetLineChartData('messages')">
+      <div class="card-panel" @click="handleSetLineChartData('orders')">
         <div class="card-panel-icon-wrapper icon-message">
-          <svg-icon icon-class="message" class-name="card-panel-icon" />
-        </div>
-        <div class="card-panel-description">
-          <div class="card-panel-text">
-            消息
-          </div>
-          <count-to :start-val="0" :end-val="81212" :duration="3000" class="card-panel-num" />
-        </div>
-      </div>
-    </el-col>
-    <el-col :xs="12" :sm="12" :lg="6" class="card-panel-col">
-      <div class="card-panel" @click="handleSetLineChartData('purchases')">
-        <div class="card-panel-icon-wrapper icon-money">
-          <svg-icon icon-class="money" class-name="card-panel-icon" />
-        </div>
-        <div class="card-panel-description">
-          <div class="card-panel-text">
-            金额
-          </div>
-          <count-to :start-val="0" :end-val="9280" :duration="3200" class="card-panel-num" />
-        </div>
-      </div>
-    </el-col>
-    <el-col :xs="12" :sm="12" :lg="6" class="card-panel-col">
-      <div class="card-panel" @click="handleSetLineChartData('shoppings')">
-        <div class="card-panel-icon-wrapper icon-shopping">
           <svg-icon icon-class="shopping" class-name="card-panel-icon" />
         </div>
         <div class="card-panel-description">
           <div class="card-panel-text">
-            订单
+            订单总数
           </div>
-          <count-to :start-val="0" :end-val="13600" :duration="3600" class="card-panel-num" />
+          <count-to :start-val="0" :end-val="statistics.orders" :duration="3000" class="card-panel-num" />
+          <span class="unit">个</span>
+        </div>
+      </div>
+    </el-col>
+    <el-col :xs="12" :sm="12" :lg="6" class="card-panel-col">
+      <div class="card-panel" @click="handleSetLineChartData('books')">
+        <div class="card-panel-icon-wrapper icon-money">
+          <svg-icon icon-class="form" class-name="card-panel-icon" />
+        </div>
+        <div class="card-panel-description">
+          <div class="card-panel-text">
+            图书总数
+          </div>
+          <count-to :start-val="0" :end-val="statistics.books" :duration="3200" class="card-panel-num" />
+          <span class="unit">本</span>
+        </div>
+      </div>
+    </el-col>
+    <el-col :xs="12" :sm="12" :lg="6" class="card-panel-col">
+      <div class="card-panel" @click="handleSetLineChartData('publishedBooks')">
+        <div class="card-panel-icon-wrapper icon-shopping">
+          <svg-icon icon-class="documentation" class-name="card-panel-icon" />
+        </div>
+        <div class="card-panel-description">
+          <div class="card-panel-text">
+            在售图书
+          </div>
+          <count-to :start-val="0" :end-val="statistics.publishedBooks" :duration="3600" class="card-panel-num" />
+          <span class="unit">本</span>
         </div>
       </div>
     </el-col>
@@ -61,6 +65,17 @@ import CountTo from 'vue-count-to'
 export default {
   components: {
     CountTo
+  },
+  props: {
+    statistics: {
+      type: Object,
+      default: () => ({
+        users: 0,
+        orders: 0,
+        books: 0,
+        publishedBooks: 0
+      })
+    }
   },
   methods: {
     handleSetLineChartData(type) {
@@ -155,6 +170,13 @@ export default {
 
       .card-panel-num {
         font-size: 20px;
+        display: inline-block;
+      }
+      
+      .unit {
+        font-size: 14px;
+        margin-left: 5px;
+        color: rgba(0, 0, 0, 0.45);
       }
     }
   }

@@ -19,22 +19,25 @@
             
             <!-- 意图识别结果 -->
             <div v-else-if="message.intentData && !message.queryResult" class="intent-data">
-              <div class="intent-type">
+              <!-- <div class="intent-type">
                 <el-tag size="small" :type="getIntentTagType(message.intentData.intent)">
                   {{ getIntentName(message.intentData.intent) }}
                 </el-tag>
-              </div>
+              </div> -->
               <div v-if="Object.keys(message.intentData.parameters).length > 0" class="intent-params">
                 <div v-for="(value, key) in message.intentData.parameters" :key="key" class="param-item">
                   <span class="param-name">{{ formatParamName(key) }}:</span>
                   <span class="param-value">{{ value }}</span>
                 </div>
               </div>
-              <div v-else class="no-params">
-                未识别到有效参数
-              </div>
-              <div v-if="message.intentData.intent === 'unknown'" class="unknown-message">
-                未能识别查询意图，请尝试更明确的问题
+              <div v-if="message.intentData.intent === 'unknown'" class="helpful-message">
+                <p>小地暂时不能帮助您解决这个问题，您可以尝试以下问题：</p>
+                <ul class="ai-example-list">
+                  <li><span class="example-query" @click="useExampleQuery('请帮我查询作者是马克思的书籍')">"请帮我查询作者是马克思的书籍"</span></li>
+                  <li><span class="example-query" @click="useExampleQuery('有没有ISBN为9787111213826的书？')">"有没有ISBN为9787111213826的书？"</span></li>
+                  <li><span class="example-query" @click="useExampleQuery('我想看看有什么畅销书推荐')">"我想看看有什么畅销书推荐"</span></li>
+                  <li><span class="example-query" @click="useExampleQuery('系统中有多少在售图书？')">"系统中有多少在售图书？"</span></li>
+                </ul>
               </div>
             </div>
             
@@ -225,7 +228,7 @@
           <li>推荐几本计算机类的书籍</li>
           <li>《时间简史》的价格是多少？</li>
         </ul>
-      </div>
+    </div>
     </div>
 
     <!-- 图书详情弹窗 -->
@@ -706,9 +709,9 @@ export default {
         }
         
         // 添加AI回复到消息列表
-        this.messages.push({
+      this.messages.push({
           content: aiResponse.responseText || "",
-          isUser: false,
+        isUser: false,
           time: this.getCurrentTime(),
           intentData: aiResponse.intentData,
           queryResult: aiResponse.queryResult
@@ -748,6 +751,9 @@ export default {
       const date = new Date(timestamp);
       return isNaN(date.getTime()) ? '未知' : 
         `${date.getFullYear()}-${(date.getMonth()+1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
+    },
+    useExampleQuery(query) {
+      this.inputMessage = query;
     }
   }
 }
@@ -1042,9 +1048,43 @@ export default {
 }
 
 .unknown-message {
-  color: #f56c6c;
   margin-top: 8px;
   font-size: 13px;
+  
+  p {
+    margin: 5px 0;
+    
+    &:first-child {
+      color: #f56c6c;
+    }
+  }
+  
+  .ai-capabilities {
+    font-weight: bold;
+    margin-top: 10px;
+    color: #409EFF;
+  }
+  
+  .ai-example-list {
+    margin: 5px 0 0 15px;
+    padding: 0;
+    
+    li {
+      margin-bottom: 5px;
+      list-style-type: circle;
+      color: #606266;
+    }
+  }
+  
+  .example-query {
+    color: #409EFF;
+    font-style: italic;
+    cursor: pointer;
+    
+    &:hover {
+      text-decoration: underline;
+    }
+  }
 }
 
 .chat-help {
@@ -1365,5 +1405,52 @@ export default {
   background-color: #f8f9fa;
   padding: 10px;
   border-radius: 4px;
+}
+
+.helpful-message {
+  margin-top: 8px;
+  font-size: 13px;
+  
+  p {
+    margin: 5px 0;
+    
+    &:first-child {
+      color: #f56c6c;
+    }
+  }
+  
+  .ai-capabilities {
+    font-weight: bold;
+    margin-top: 10px;
+    color: #409EFF;
+  }
+  
+  .ai-example-list {
+    margin: 5px 0 0 15px;
+    padding: 0;
+    
+    li {
+      margin-bottom: 5px;
+      list-style-type: circle;
+      color: #606266;
+    }
+  }
+  
+  .example-query {
+    color: #409EFF;
+    font-style: italic;
+    cursor: pointer;
+    
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+}
+
+.unknown-intent-image {
+  width: 100px;
+  height: 150px;
+  object-fit: cover;
+  margin-top: 10px;
 }
 </style> 

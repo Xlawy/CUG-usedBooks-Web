@@ -25,7 +25,16 @@ export default {
   },
   data() {
     return {
-      chart: null
+      chart: null,
+      bookCategories: [
+        { value: 120, name: '计算机/IT' },
+        { value: 85, name: '文学艺术' },
+        { value: 70, name: '经济管理' },
+        { value: 65, name: '理学工程' },
+        { value: 50, name: '地质学' },
+        { value: 40, name: '外语' },
+        { value: 30, name: '其他' }
+      ]
     }
   },
   mounted() {
@@ -44,6 +53,8 @@ export default {
     initChart() {
       this.chart = echarts.init(this.$el, 'macarons')
 
+      const categoryNames = this.bookCategories.map(item => item.name);
+
       this.chart.setOption({
         tooltip: {
           trigger: 'item',
@@ -52,22 +63,16 @@ export default {
         legend: {
           left: 'center',
           bottom: '10',
-          data: ['Industries', 'Technology', 'Forex', 'Gold', 'Forecasts']
+          data: categoryNames
         },
         series: [
           {
-            name: 'WEEKLY WRITE ARTICLES',
+            name: '图书分类',
             type: 'pie',
             roseType: 'radius',
             radius: [15, 95],
             center: ['50%', '38%'],
-            data: [
-              { value: 320, name: 'Industries' },
-              { value: 240, name: 'Technology' },
-              { value: 149, name: 'Forex' },
-              { value: 100, name: 'Gold' },
-              { value: 59, name: 'Forecasts' }
-            ],
+            data: this.bookCategories,
             animationEasing: 'cubicInOut',
             animationDuration: 2600
           }

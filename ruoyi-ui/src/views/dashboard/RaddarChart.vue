@@ -49,8 +49,8 @@ export default {
       this.chart.setOption({
         tooltip: {
           trigger: 'axis',
-          axisPointer: { // 坐标轴指示器，坐标轴触发有效
-            type: 'shadow' // 默认为直线，可选为：'line' | 'shadow'
+          axisPointer: {
+            type: 'shadow'
           }
         },
         radar: {
@@ -68,18 +68,18 @@ export default {
             }
           },
           indicator: [
-            { name: 'Sales', max: 10000 },
-            { name: 'Administration', max: 20000 },
-            { name: 'Information Techology', max: 20000 },
-            { name: 'Customer Support', max: 20000 },
-            { name: 'Development', max: 20000 },
-            { name: 'Marketing', max: 20000 }
+            { name: '浏览量', max: 10000 },
+            { name: '搜索次数', max: 8000 },
+            { name: '下单量', max: 3000 },
+            { name: '发布图书', max: 2000 },
+            { name: '评论量', max: 5000 },
+            { name: '分享量', max: 4000 }
           ]
         },
         legend: {
           left: 'center',
           bottom: '10',
-          data: ['Allocated Budget', 'Expected Spending', 'Actual Spending']
+          data: ['本周活跃度', '上周活跃度', '月平均活跃度']
         },
         series: [{
           type: 'radar',
@@ -95,16 +95,25 @@ export default {
           },
           data: [
             {
-              value: [5000, 7000, 12000, 11000, 15000, 14000],
-              name: 'Allocated Budget'
+              value: [5600, 4500, 1200, 800, 3200, 2100],
+              name: '本周活跃度',
+              itemStyle: {
+                color: '#4992ff'
+              }
             },
             {
-              value: [4000, 9000, 15000, 15000, 13000, 11000],
-              name: 'Expected Spending'
+              value: [5200, 4100, 1100, 720, 2900, 1800],
+              name: '上周活跃度',
+              itemStyle: {
+                color: '#7cffb2'
+              }
             },
             {
-              value: [5500, 11000, 12000, 15000, 12000, 12000],
-              name: 'Actual Spending'
+              value: [5000, 3800, 900, 650, 2700, 1500],
+              name: '月平均活跃度',
+              itemStyle: {
+                color: '#fddd60'
+              }
             }
           ],
           animationDuration: animationDuration
