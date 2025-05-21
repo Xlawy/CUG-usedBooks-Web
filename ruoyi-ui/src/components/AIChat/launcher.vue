@@ -3,7 +3,7 @@
     <div class="ai-chat-launcher" @click.stop="toggleChat" v-if="!chatVisible">
       <i class="el-icon-message"></i>
     </div>
-    <ai-chat :visible.sync="chatVisible"></ai-chat>
+    <ai-chat v-show="chatVisible" :visible.sync="chatVisible"></ai-chat>
   </div>
 </template>
 

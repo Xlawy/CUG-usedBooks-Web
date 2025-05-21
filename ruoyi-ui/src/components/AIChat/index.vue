@@ -1,10 +1,9 @@
 <template>
-  <div class="ai-chat-container" :class="{ 'is-collapsed': isCollapsed }">
-    <div class="chat-header" @click="toggleCollapse">
+  <div class="ai-chat-container" :class="{ 'is-collapsed': isCollapsed }" :style="containerStyle">
+    <div class="chat-header" @mousedown="startDrag">
       <span class="chat-title">AI助手</span>
       <div class="chat-actions">
-        <el-button type="text" icon="el-icon-minus" @click.stop="toggleCollapse"></el-button>
-        <el-button type="text" icon="el-icon-close" @click.stop="closeChat"></el-button>
+        <el-button type="text" icon="el-icon-minus" @click.stop="closeChat"></el-button>
       </div>
     </div>
     
@@ -33,6 +32,7 @@
           :rows="2"
           placeholder="请输入问题..."
           v-model="inputMessage"
+          class="custom-textarea"
           @keyup.enter.native.exact="sendMessage"
         ></el-input>
         <el-button type="primary" icon="el-icon-s-promotion" @click="sendMessage" :loading="isLoading">发送</el-button>
@@ -61,7 +61,24 @@ export default {
           isUser: false,
           time: this.getCurrentTime()
         }
-      ]
+      ],
+      // 拖动相关数据
+      isDragging: false,
+      position: {
+        x: window.innerWidth - 370, // 窗口右侧20px，考虑宽度350px
+        y: window.innerHeight - 520 // 窗口底部20px，考虑高度500px
+      },
+      dragOffset: {
+        x: 0,
+        y: 0
+      }
+    }
+  },
+  computed: {
+    containerStyle() {
+      return {
+        transform: `translate(${this.position.x}px, ${this.position.y}px)`
+      }
     }
   },
   watch: {
@@ -76,13 +93,67 @@ export default {
       });
     }
   },
+  mounted() {
+    document.addEventListener('mousemove', this.onDrag);
+    document.addEventListener('mouseup', this.stopDrag);
+    
+    // 初始化位置为右下角
+    this.updateInitialPosition();
+    
+    // 监听窗口大小变化
+    window.addEventListener('resize', this.updateInitialPosition);
+  },
+  beforeDestroy() {
+    document.removeEventListener('mousemove', this.onDrag);
+    document.removeEventListener('mouseup', this.stopDrag);
+    window.removeEventListener('resize', this.updateInitialPosition);
+  },
   methods: {
-    toggleCollapse() {
-      console.log('Toggle collapse called, current state:', this.isCollapsed);
-      this.isCollapsed = !this.isCollapsed;
+    updateInitialPosition() {
+      if (!this.isDragging) {
+        // 只在没有拖动时更新初始位置
+        const isMobile = window.innerWidth <= 767;
+        if (isMobile) {
+          this.position.x = window.innerWidth * 0.05;
+          this.position.y = window.innerHeight - 470;
+        } else {
+          this.position.x = window.innerWidth - 370;
+          this.position.y = window.innerHeight - 520;
+        }
+      }
+    },
+    startDrag(event) {
+      if (event.target.closest('.chat-actions')) return;
+      
+      this.isDragging = true;
+      
+      // 记录鼠标在元素内的相对位置
+      this.dragOffset.x = event.clientX - this.position.x;
+      this.dragOffset.y = event.clientY - this.position.y;
+      
+      event.preventDefault();
+    },
+    onDrag(event) {
+      if (!this.isDragging) return;
+      
+      // 使用requestAnimationFrame提高性能
+      requestAnimationFrame(() => {
+        // 直接计算新位置，避免复杂计算
+        const newX = event.clientX - this.dragOffset.x;
+        const newY = event.clientY - this.dragOffset.y;
+        
+        // 限制在可视区域内
+        const maxX = window.innerWidth - 100;
+        const maxY = window.innerHeight - 50;
+        
+        this.position.x = Math.max(0, Math.min(maxX, newX));
+        this.position.y = Math.max(0, Math.min(maxY, newY));
+      });
+    },
+    stopDrag() {
+      this.isDragging = false;
     },
     closeChat() {
-      console.log('Close chat called');
       this.$emit('update:visible', false);
     },
     getCurrentTime() {
@@ -96,18 +167,15 @@ export default {
       }
     },
     formatMessage(content) {
-      // 简单的文本格式化，可以根据需要扩展为Markdown渲染等
       return content.replace(/\n/g, '<br>');
     },
     async sendMessage(e) {
-      // 如果是按Enter键发送，并且同时按了Shift键，则不发送
       if (e && e.type === 'keyup' && e.shiftKey) {
         return;
       }
       
       if (!this.inputMessage.trim()) return;
       
-      // 添加用户消息
       this.messages.push({
         content: this.inputMessage,
         isUser: true,
@@ -118,7 +186,6 @@ export default {
       this.inputMessage = '';
       this.isLoading = true;
       
-      // 模拟AI响应，实际项目中应调用后端API
       setTimeout(() => {
         this.simulateAIResponse(userMessage);
         this.isLoading = false;
@@ -152,43 +219,52 @@ export default {
 <style lang="scss" scoped>
 .ai-chat-container {
   position: fixed;
-  bottom: 20px;
-  right: 20px;
+  left: 0;
+  top: 0;
   width: 350px;
-  border-radius: 8px;
-  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+  border-radius: 12px;
+  box-shadow: 0 5px 25px rgba(0, 0, 0, 0.15);
   background-color: #fff;
   z-index: 2000;
   display: flex;
   flex-direction: column;
-  transition: all 0.3s ease;
+  transition: transform 0.05s ease;
   max-height: 500px;
+  will-change: transform;
   
   &.is-collapsed {
-    max-height: 45px;
+    height: 50px;
+    max-height: 50px;
+    width: 250px;
+    overflow: hidden;
+    box-shadow: 0 3px 15px rgba(0, 0, 0, 0.1);
+    
+    .chat-body {
+      display: none;
+    }
   }
   
   @media (max-width: 767px) {
     width: 90%;
-    right: 5%;
-    bottom: 70px;
     max-height: 400px;
   }
 }
 
 .chat-header {
-  padding: 10px;
+  padding: 12px 15px;
   background-color: #409EFF;
   color: white;
-  border-radius: 8px 8px 0 0;
+  border-radius: 12px 12px 0 0;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  cursor: pointer;
+  cursor: move;
+  user-select: none;
 }
 
 .chat-title {
   font-weight: bold;
+  font-size: 16px;
 }
 
 .chat-actions {
@@ -197,6 +273,13 @@ export default {
   .el-button {
     color: white;
     padding: 3px;
+    margin-left: 5px;
+    transition: color 0.2s;
+    cursor: pointer;
+    
+    &:hover {
+      color: #f0f0f0;
+    }
   }
 }
 
@@ -210,37 +293,59 @@ export default {
   flex: 1;
   overflow-y: auto;
   padding: 15px;
-  background-color: #f8f8f8;
+  background-color: #f9f9f9;
+  
+  &::-webkit-scrollbar {
+    width: 5px;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background-color: rgba(0, 0, 0, 0.2);
+    border-radius: 5px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background-color: rgba(0, 0, 0, 0.05);
+  }
 }
 
 .message {
   display: flex;
-  margin-bottom: 15px;
+  margin-bottom: 18px;
   
   &.user-message {
     flex-direction: row-reverse;
     
     .message-content {
-      background-color: #e1f3ff;
+      background-color: #ecf5ff;
       margin-left: 0;
       margin-right: 10px;
       border-radius: 15px 0 15px 15px;
+      border: 1px solid #d9ecff;
     }
     
     .message-time {
       text-align: left;
     }
   }
+  
+  &.ai-message {
+    .message-content {
+      background-color: white;
+      border: 1px solid #eee;
+      border-radius: 0 15px 15px 15px;
+    }
+  }
 }
 
 .message-avatar {
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
-  background-color: #ddd;
   display: flex;
   align-items: center;
   justify-content: center;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
   
   i {
     font-size: 18px;
@@ -259,39 +364,83 @@ export default {
 
 .message-content {
   max-width: 70%;
-  padding: 10px;
-  border-radius: 0 15px 15px 15px;
+  padding: 12px;
   background-color: white;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
   margin-left: 10px;
 }
 
 .message-text {
   white-space: pre-wrap;
   word-break: break-word;
+  font-size: 14px;
+  line-height: 1.5;
 }
 
 .message-time {
-  font-size: 12px;
+  font-size: 11px;
   color: #999;
   margin-top: 5px;
   text-align: right;
 }
 
 .chat-input {
-  padding: 10px;
-  border-top: 1px solid #eee;
+  padding: 12px;
+  border-top: 1px solid #eaeaea;
   display: flex;
   align-items: flex-end;
+  background-color: white;
+  border-radius: 0 0 12px 12px;
   
-  .el-textarea {
+  .el-textarea, .custom-textarea {
     margin-right: 10px;
+    flex: 1;
+    
+    ::v-deep textarea {
+      border-radius: 8px;
+      resize: none;
+      padding: 10px;
+      font-size: 14px;
+      transition: all 0.3s;
+      border: 1px solid #dcdfe6;
+      box-shadow: 0 0 0 0 rgba(64, 158, 255, 0);
+      
+      &:focus {
+        border-color: #409EFF;
+        box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.2);
+      }
+      
+      &::placeholder {
+        color: #909399;
+      }
+    }
+  }
+  
+  .el-button {
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-size: 14px;
+    height: 40px;
+    margin-left: 8px;
+    align-self: flex-end;
+    transition: all 0.2s;
+    
+    &:hover {
+      opacity: 0.9;
+      transform: translateY(-1px);
+      box-shadow: 0 2px 8px rgba(64, 158, 255, 0.3);
+    }
+    
+    &:active {
+      transform: translateY(0);
+    }
   }
 }
 
 .typing-indicator {
   display: flex;
   padding: 10px;
+  margin-bottom: 15px;
   
   span {
     height: 8px;
