@@ -1,6 +1,8 @@
 package com.ruoyi.web.controller.system;
 
 import java.util.Map;
+import java.util.HashMap;
+import com.alibaba.fastjson2.JSONObject;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -17,6 +19,7 @@ import com.ruoyi.common.core.domain.AjaxResult;
 import com.ruoyi.common.enums.BusinessType;
 import com.ruoyi.common.utils.StringUtils;
 import com.ruoyi.system.service.IAIService;
+import com.ruoyi.system.service.IIntentProcessorService;
 
 /**
  * AI聊天服务控制器
@@ -29,6 +32,9 @@ public class SysAIController extends BaseController
 {
     @Autowired
     private IAIService aiService;
+
+    @Autowired
+    private IIntentProcessorService intentProcessorService;
 
     /**
      * 获取AI配置
@@ -67,22 +73,58 @@ public class SysAIController extends BaseController
 
         try
         {
-            Map<String, Object> result = aiService.sendMessage(params);
+            // 1. 调用AI服务识别意图
+            Map<String, Object> aiResult = aiService.sendMessage(params);
             
             // 详细日志记录响应内容
-            logger.info("AI服务返回结果: {}", JSON.toJSONString(result));
+            logger.info("AI服务返回结果: {}", JSON.toJSONString(aiResult));
             
             // 校验响应内容是否完整
-            if (result != null) {
-                logger.info("返回内容: {}", result.get("content"));
-                logger.info("返回模型: {}", result.get("model"));
-                logger.info("响应时间: {}", result.get("responseTime"));
-            } else {
-                logger.warn("AI服务返回结果为空");
+            if (aiResult == null || !aiResult.containsKey("content")) {
+                logger.warn("AI服务返回结果为空或缺少content字段");
+                return error("无法获取有效的AI回复");
             }
             
-            // 构造返回数据 - 使用AjaxResult.success并传入data
-            return AjaxResult.success("操作成功", result);
+            String content = (String) aiResult.get("content");
+            logger.info("返回内容: {}", content);
+            logger.info("返回模型: {}", aiResult.get("model"));
+            logger.info("响应时间: {}", aiResult.get("responseTime"));
+            
+            // 2. 解析AI返回的JSON格式意图
+            try {
+                JSONObject intentData = JSON.parseObject(content);
+                String intent = intentData.getString("intent");
+                JSONObject parameters = intentData.getJSONObject("parameters");
+                
+                logger.info("识别到意图: {}, 参数: {}", intent, JSON.toJSONString(parameters));
+                
+                // 3. 调用意图处理服务执行实际查询
+                if (intent != null && !"unknown".equals(intent)) {
+                    Map<String, Object> intentResult = intentProcessorService.processIntent(
+                        intent, 
+                        parameters == null ? new HashMap<>() : parameters.toJavaObject(Map.class)
+                    );
+                    
+                    logger.info("意图处理结果: {}", JSON.toJSONString(intentResult));
+                    
+                    // 4. 将AI结果和查询结果合并返回
+                    Map<String, Object> finalResult = new HashMap<>();
+                    // 保留原有AI识别结果
+                    finalResult.put("aiResult", aiResult);
+                    // 添加查询结果
+                    finalResult.put("intentResult", intentResult);
+                    finalResult.put("success", intentResult.containsKey("success") ? intentResult.get("success") : true);
+                    
+                    return AjaxResult.success("意图处理成功", finalResult);
+                } else {
+                    // 如果是未知意图，只返回AI结果
+                    return AjaxResult.success("无法识别意图", aiResult);
+                }
+            } catch (Exception e) {
+                logger.error("解析意图数据失败", e);
+                // 解析失败，返回原始AI结果
+                return AjaxResult.success("解析意图失败", aiResult);
+            }
         }
         catch (Exception e)
         {

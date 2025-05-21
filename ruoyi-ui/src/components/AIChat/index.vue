@@ -16,7 +16,9 @@
           </div>
           <div class="message-content">
             <div v-if="message.isUser || !message.intentData" class="message-text" v-html="formatMessage(message.content)"></div>
-            <div v-else class="intent-data">
+            
+            <!-- 意图识别结果 -->
+            <div v-else-if="message.intentData && !message.queryResult" class="intent-data">
               <div class="intent-type">
                 <el-tag size="small" :type="getIntentTagType(message.intentData.intent)">
                   {{ getIntentName(message.intentData.intent) }}
@@ -35,6 +37,103 @@
                 未能识别查询意图，请尝试更明确的问题
               </div>
             </div>
+            
+            <!-- 查询结果 -->
+            <div v-else-if="message.queryResult" class="query-result">
+              <!-- 查询成功结果 -->
+              <div v-if="message.queryResult.success" class="query-success">
+                <div class="query-message">{{ message.queryResult.message }}</div>
+                
+                <!-- 图书查询结果 -->
+                <div v-if="message.intentData.intent === 'book_search'" class="book-list">
+                  <el-collapse v-if="message.queryResult.data && message.queryResult.data.length > 0">
+                    <el-collapse-item v-for="(book, idx) in message.queryResult.data" :key="idx" :title="book.title">
+                      <div class="book-detail">
+                        <div class="book-info-row"><span class="info-label">作者:</span> {{ book.author }}</div>
+                        <div class="book-info-row"><span class="info-label">出版社:</span> {{ book.publisher }}</div>
+                        <div class="book-info-row"><span class="info-label">价格:</span> ¥{{ book.price }}</div>
+                        <div class="book-info-row"><span class="info-label">库存:</span> {{ book.stock }} 本</div>
+                        <div class="book-info-row"><span class="info-label">ISBN:</span> {{ book.isbn }}</div>
+                        <div class="book-description">{{ book.description }}</div>
+                      </div>
+                    </el-collapse-item>
+                  </el-collapse>
+                </div>
+                
+                <!-- 图书详情结果 -->
+                <div v-else-if="message.intentData.intent === 'book_info'" class="book-info">
+                  <div v-if="message.queryResult.field" class="single-field">
+                    <span class="field-name">{{ formatParamName(message.queryResult.field) }}:</span>
+                    <span class="field-value">{{ message.queryResult.fieldValue }}</span>
+                  </div>
+                  <div v-else-if="message.queryResult.data" class="full-book-info">
+                    <div class="book-info-row"><span class="info-label">书名:</span> {{ message.queryResult.data.title }}</div>
+                    <div class="book-info-row"><span class="info-label">作者:</span> {{ message.queryResult.data.author }}</div>
+                    <div class="book-info-row"><span class="info-label">出版社:</span> {{ message.queryResult.data.publisher }}</div>
+                    <div class="book-info-row"><span class="info-label">价格:</span> ¥{{ message.queryResult.data.price }}</div>
+                    <div class="book-info-row"><span class="info-label">库存:</span> {{ message.queryResult.data.stock }} 本</div>
+                    <div class="book-info-row"><span class="info-label">ISBN:</span> {{ message.queryResult.data.isbn }}</div>
+                    <div class="book-description">{{ message.queryResult.data.description }}</div>
+                  </div>
+                </div>
+                
+                <!-- 订单状态结果 -->
+                <div v-else-if="message.intentData.intent === 'order_status'" class="order-status">
+                  <div v-if="message.queryResult.data" class="order-info">
+                    <div v-if="Array.isArray(message.queryResult.data)">
+                      <!-- 多个订单 -->
+                      <el-collapse>
+                        <el-collapse-item v-for="(order, idx) in message.queryResult.data" :key="idx" :title="`订单号: ${order.orderId}`">
+                          <div class="order-detail">
+                            <div class="order-info-row"><span class="info-label">状态:</span> {{ order.status }}</div>
+                            <div class="order-info-row"><span class="info-label">金额:</span> ¥{{ order.totalAmount }}</div>
+                            <div class="order-info-row"><span class="info-label">创建时间:</span> {{ order.createTime }}</div>
+                          </div>
+                        </el-collapse-item>
+                      </el-collapse>
+                    </div>
+                    <div v-else>
+                      <!-- 单个订单 -->
+                      <div class="order-detail">
+                        <div class="order-info-row"><span class="info-label">订单号:</span> {{ message.queryResult.data.orderId }}</div>
+                        <div class="order-info-row"><span class="info-label">状态:</span> {{ message.queryResult.data.status }}</div>
+                        <div class="order-info-row"><span class="info-label">金额:</span> ¥{{ message.queryResult.data.totalAmount }}</div>
+                        <div class="order-info-row"><span class="info-label">创建时间:</span> {{ message.queryResult.data.createTime }}</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                
+                <!-- 图书推荐结果 -->
+                <div v-else-if="message.intentData.intent === 'book_recommendation'" class="book-recommendation">
+                  <div v-if="message.queryResult.data && message.queryResult.data.length > 0" class="recommended-books">
+                    <el-carousel :interval="4000" type="card" height="240px">
+                      <el-carousel-item v-for="book in message.queryResult.data" :key="book.id">
+                        <div class="recommendation-card">
+                          <h3 class="book-title">{{ book.title }}</h3>
+                          <div class="book-info-row"><span class="info-label">作者:</span> {{ book.author }}</div>
+                          <div class="book-info-row"><span class="info-label">类别:</span> {{ book.category }}</div>
+                          <div class="book-info-row"><span class="info-label">价格:</span> ¥{{ book.price }}</div>
+                          <div class="book-description">{{ book.description }}</div>
+                        </div>
+                      </el-carousel-item>
+                    </el-carousel>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- 查询失败结果 -->
+              <div v-else class="query-failure">
+                <el-alert
+                  title="查询失败"
+                  type="error"
+                  :description="message.queryResult.message"
+                  show-icon
+                  :closable="false">
+                </el-alert>
+              </div>
+            </div>
+            
             <div class="message-time">{{ message.time }}</div>
           </div>
         </div>
@@ -313,54 +412,45 @@ export default {
               history: chatHistory
             });
             
-            // 适配若依框架返回数据格式
             // 在控制台打印详细日志，帮助调试
             console.log('后端返回完整数据:', response);
             
-            // 检查response数据结构
-            if (response && response.data) {
-              console.log('提取的data数据:', response.data);
-              // 若依框架返回的数据是在data字段里的
-              response = response.data;
-            }
-          }
-          
-          // 处理响应 - 现在返回的是JSON字符串
-          if (response && response.content) {
-            console.log('从响应中提取的内容:', response.content);
+            // 现在后端返回的数据可能包含意图处理结果
+            let aiResult = null;
+            let intentResult = null;
             
-            try {
-              // 尝试解析JSON响应
-              const intentData = JSON.parse(response.content);
-              console.log('解析后的意图数据:', intentData);
-              
-              // 如果解析成功且格式正确，直接返回意图数据
-              if (intentData && intentData.intent) {
-                // 如果意图为unknown且不是关于图书或订单的查询，则不返回响应
-                if (intentData.intent === 'unknown') {
-                  if (!userMessage.includes('图书') && !userMessage.includes('书') && 
-                      !userMessage.includes('订单') && !userMessage.includes('推荐')) {
-                    return null; // 不返回任何响应
-                  }
-                }
+            if (response.data) {
+              if (response.data.aiResult) {
+                // 新的格式，包含AI结果和意图处理结果
+                aiResult = response.data.aiResult;
+                intentResult = response.data.intentResult;
+                console.log('AI识别结果:', aiResult);
+                console.log('意图处理结果:', intentResult);
+              } else {
+                // 兼容旧的格式
+                aiResult = response.data;
+              }
+            }
+            
+            if (aiResult) {
+              // 提取AI识别的意图
+              try {
+                const intentData = JSON.parse(aiResult.content);
+                
+                // 返回意图数据和查询结果
                 return {
-                  responseText: "", // 不再需要文本响应
-                  intentData: intentData
+                  intentData: intentData,
+                  queryResult: intentResult && intentResult.result ? intentResult.result : null
+                };
+              } catch (jsonError) {
+                console.error('解析意图JSON失败:', jsonError);
+                return {
+                  intentData: null,
+                  queryResult: null,
+                  responseText: aiResult.content
                 };
               }
-            } catch (jsonError) {
-              console.error('解析意图JSON失败:', jsonError);
-              // 如果解析失败，可能不是有效的JSON，忽略并返回原始内容
             }
-            
-            // 如果不是有效的JSON或解析失败，仍然返回纯文本响应（兼容旧版）
-            return {
-              responseText: aiService.formatAIResponse(response.content),
-              intentData: null
-            };
-          } else {
-            console.error('无法从响应中提取内容，原始响应:', response);
-            throw new Error(response?.message || '获取AI回复失败，无法解析响应数据');
           }
         } catch (error) {
           // 如果API调用失败，使用本地模拟响应
@@ -371,14 +461,15 @@ export default {
           try {
             const intentData = JSON.parse(simulatedResponse);
             return {
-              responseText: "",
-              intentData: intentData
+              intentData: intentData,
+              queryResult: null
             };
           } catch (jsonError) {
             console.error('解析模拟响应JSON失败:', jsonError);
             return {
               responseText: "抱歉，无法处理您的请求。",
-              intentData: null
+              intentData: null,
+              queryResult: null
             };
           }
         }
@@ -388,7 +479,8 @@ export default {
         this.errorMessage = error.message || '无法连接到AI服务，请稍后再试';
         return {
           responseText: '抱歉，AI服务暂时无法回应，请稍后再试。',
-          intentData: null
+          intentData: null,
+          queryResult: null
         };
       }
     },
@@ -408,7 +500,8 @@ export default {
         content: userMessage,
         isUser: true,
         time: this.getCurrentTime(),
-        intentData: null
+        intentData: null,
+        queryResult: null
       });
       
       this.inputMessage = '';
@@ -429,7 +522,8 @@ export default {
           content: aiResponse.responseText || "",
           isUser: false,
           time: this.getCurrentTime(),
-          intentData: aiResponse.intentData
+          intentData: aiResponse.intentData,
+          queryResult: aiResponse.queryResult
         });
       } catch (error) {
         // 错误处理
@@ -438,7 +532,8 @@ export default {
           content: '抱歉，发生了错误，无法获取回复。',
           isUser: false,
           time: this.getCurrentTime(),
-          intentData: null
+          intentData: null,
+          queryResult: null
         });
       } finally {
         this.isLoading = false;
@@ -763,5 +858,87 @@ export default {
   li {
     margin-bottom: 3px;
   }
+}
+
+// 查询结果样式
+.query-result {
+  margin-top: 10px;
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.query-message {
+  padding: 8px 10px;
+  font-weight: bold;
+  background-color: #f0f2f5;
+  color: #606266;
+}
+
+.book-list, .book-info, .order-status, .book-recommendation {
+  padding: 0 10px 10px 10px;
+}
+
+.book-detail, .order-detail {
+  padding: 10px;
+  background-color: white;
+  border-radius: 6px;
+  margin-top: 5px;
+}
+
+.book-info-row, .order-info-row {
+  margin: 5px 0;
+  font-size: 13px;
+}
+
+.info-label {
+  font-weight: bold;
+  color: #606266;
+  margin-right: 5px;
+}
+
+.book-description {
+  margin-top: 8px;
+  font-size: 13px;
+  color: #606266;
+  line-height: 1.5;
+}
+
+.single-field {
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  background-color: white;
+  border-radius: 6px;
+  margin-top: 5px;
+}
+
+.field-name {
+  font-weight: bold;
+  color: #409EFF;
+  margin-right: 8px;
+}
+
+.field-value {
+  font-size: 16px;
+}
+
+.query-failure {
+  padding: 10px;
+}
+
+.recommendation-card {
+  padding: 15px;
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+  height: 100%;
+  overflow: auto;
+}
+
+.book-title {
+  margin-top: 0;
+  margin-bottom: 10px;
+  color: #409EFF;
 }
 </style> 
