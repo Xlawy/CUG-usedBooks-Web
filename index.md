@@ -1,3 +1,4 @@
+```js
 <template>
   <div class="app-container home">
     <!-- 统计面板 -->
@@ -126,8 +127,8 @@ import LineChart from './dashboard/LineChart'
 import PieChart from './dashboard/PieChart'
 import BarChart from './dashboard/BarChart'
 import RaddarChart from './dashboard/RaddarChart'
+import { sendMessageToAI } from '@/api/ai'
 import { parseTime } from '@/utils/ruoyi'
-import { getAllStatistics } from '@/api/statistics'
 
 export default {
   name: "Index",
@@ -223,23 +224,54 @@ export default {
       this.hasError = false;
       
       try {
-        // 使用新的统计接口获取所有统计数据
-        const response = await getAllStatistics();
+        // 获取用户统计
+        const usersPromise = this.fetchStatistics('users');
+        // 获取订单统计
+        const ordersPromise = this.fetchStatistics('orders');
+        // 获取图书统计
+        const booksPromise = this.fetchStatistics('books');
+        // 获取在售图书统计
+        const publishedBooksPromise = this.fetchStatistics('publishedBooks');
         
-        if (response && response.data && response.data.success) {
-          const statistics = response.data.statistics;
-          // 更新统计数据
-          this.statisticsData.users = statistics.users || 0;
-          this.statisticsData.orders = statistics.orders || 0;
-          this.statisticsData.books = statistics.books || 0;
-          this.statisticsData.publishedBooks = statistics.publishedBooks || 0;
-          
-          // 更新最后数据刷新时间
-          this.lastUpdateTime = parseTime(new Date());
-        } else {
-          this.hasError = true;
-          this.$message.error('获取统计数据失败，请稍后再试');
+        // 并行请求所有数据
+        const [usersResponse, ordersResponse, booksResponse, publishedBooksResponse] = 
+          await Promise.all([usersPromise, ordersPromise, booksPromise, publishedBooksPromise]);
+        
+        // 处理用户数据
+        if (usersResponse && usersResponse.data && usersResponse.data.aiResult) {
+          const intentResult = usersResponse.data.intentResult;
+          if (intentResult && intentResult.result && intentResult.result.success) {
+            this.statisticsData.users = intentResult.result.count || 0;
+          }
         }
+        
+        // 处理订单数据
+        if (ordersResponse && ordersResponse.data && ordersResponse.data.aiResult) {
+          const intentResult = ordersResponse.data.intentResult;
+          if (intentResult && intentResult.result && intentResult.result.success) {
+            this.statisticsData.orders = intentResult.result.count || 0;
+          }
+        }
+        
+        // 处理图书数据
+        if (booksResponse && booksResponse.data && booksResponse.data.aiResult) {
+          const intentResult = booksResponse.data.intentResult;
+          if (intentResult && intentResult.result && intentResult.result.success) {
+            this.statisticsData.books = intentResult.result.count || 0;
+          }
+        }
+        
+        // 处理在售图书数据
+        if (publishedBooksResponse && publishedBooksResponse.data && publishedBooksResponse.data.aiResult) {
+          const intentResult = publishedBooksResponse.data.intentResult;
+          if (intentResult && intentResult.result && intentResult.result.success) {
+            this.statisticsData.publishedBooks = intentResult.result.count || 0;
+          }
+        }
+        
+        // 更新最后数据刷新时间
+        this.lastUpdateTime = parseTime(new Date());
+        
       } catch (error) {
         console.error('获取统计数据失败:', error);
         this.hasError = true;
@@ -250,6 +282,18 @@ export default {
         }
       }
     },
+    async fetchStatistics(statType) {
+      const message = `统计${statType === 'users' ? '用户' : statType === 'orders' ? '订单' : statType === 'books' ? '图书' : '在售图书'}数量`;
+      try {
+        return await sendMessageToAI({
+          message: message,
+          history: []
+        });
+      } catch (error) {
+        console.error(`获取${statType}统计数据失败:`, error);
+        return null;
+      }
+    }
   }
 };
 </script>
@@ -357,4 +401,5 @@ export default {
   }
 }
 </style>
+```
 
