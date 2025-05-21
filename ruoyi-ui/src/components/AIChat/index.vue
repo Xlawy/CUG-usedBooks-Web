@@ -52,7 +52,6 @@
                         <div class="book-info-row"><span class="info-label">作者:</span> {{ book.author }}</div>
                         <div class="book-info-row"><span class="info-label">出版社:</span> {{ book.publisher }}</div>
                         <div class="book-info-row"><span class="info-label">价格:</span> ¥{{ book.price }}</div>
-                        <div class="book-info-row"><span class="info-label">库存:</span> {{ book.stock }} 本</div>
                         <div class="book-info-row"><span class="info-label">ISBN:</span> {{ book.isbn }}</div>
                         <div class="book-description">{{ book.description }}</div>
                       </div>
@@ -71,9 +70,15 @@
                     <div class="book-info-row"><span class="info-label">作者:</span> {{ message.queryResult.data.author }}</div>
                     <div class="book-info-row"><span class="info-label">出版社:</span> {{ message.queryResult.data.publisher }}</div>
                     <div class="book-info-row"><span class="info-label">价格:</span> ¥{{ message.queryResult.data.price }}</div>
-                    <div class="book-info-row"><span class="info-label">库存:</span> {{ message.queryResult.data.stock }} 本</div>
                     <div class="book-info-row"><span class="info-label">ISBN:</span> {{ message.queryResult.data.isbn }}</div>
-                    <div class="book-description">{{ message.queryResult.data.description }}</div>
+                    <div v-if="message.queryResult.data.summary" class="book-summary">
+                      <div class="summary-title">图书摘要:</div>
+                      <div class="summary-content">{{ message.queryResult.data.summary }}</div>
+                    </div>
+                    <div v-if="message.queryResult.data.aiDescription" class="book-ai-description">
+                      <div class="ai-description-title">AI智能介绍:</div>
+                      <div class="ai-description-content" v-html="formatMultiLineText(message.queryResult.data.aiDescription)"></div>
+                    </div>
                   </div>
                 </div>
                 
@@ -106,18 +111,23 @@
                 
                 <!-- 图书推荐结果 -->
                 <div v-else-if="message.intentData.intent === 'book_recommendation'" class="book-recommendation">
-                  <div v-if="message.queryResult.data && message.queryResult.data.length > 0" class="recommended-books">
-                    <el-carousel :interval="4000" type="card" height="240px">
-                      <el-carousel-item v-for="book in message.queryResult.data" :key="book.id">
-                        <div class="recommendation-card">
-                          <h3 class="book-title">{{ book.title }}</h3>
-                          <div class="book-info-row"><span class="info-label">作者:</span> {{ book.author }}</div>
-                          <div class="book-info-row"><span class="info-label">类别:</span> {{ book.category }}</div>
-                          <div class="book-info-row"><span class="info-label">价格:</span> ¥{{ book.price }}</div>
-                          <div class="book-description">{{ book.description }}</div>
+                  <div v-if="message.queryResult.data && message.queryResult.data.length > 0" class="recommended-books-horizontal">
+                    <div class="books-scroll-container">
+                      <div 
+                        v-for="book in message.queryResult.data" 
+                        :key="book.id" 
+                        class="book-card"
+                        @click="showBookDetail(book)">
+                        <div class="book-cover">
+                          <img :src="getBookCoverUrl(book)" alt="封面" class="cover-image">
                         </div>
-                      </el-carousel-item>
-                    </el-carousel>
+                        <div class="book-info">
+                          <h4 class="book-title">{{ book.title }}</h4>
+                          <div class="book-author">{{ book.author }}</div>
+                          <div class="book-price">¥{{ book.price }}</div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
                 
@@ -156,14 +166,17 @@
                 <!-- 在售图书搜索结果 -->
                 <div v-else-if="message.intentData.intent === 'published_book_search'" class="published-book-list">
                   <el-collapse v-if="message.queryResult.data && message.queryResult.data.length > 0">
-                    <el-collapse-item v-for="(book, idx) in message.queryResult.data" :key="idx" :title="book.title">
+                    <el-collapse-item v-for="(book, idx) in message.queryResult.data" :key="idx" :title="book.bookinfo ? book.bookinfo.title : '未知书名'">
                       <div class="book-detail">
-                        <div class="book-info-row"><span class="info-label">卖家:</span> {{ book.publisher || '个人卖家' }}</div>
-                        <div class="book-info-row"><span class="info-label">作者:</span> {{ book.author }}</div>
+                        <div class="book-info-row"><span class="info-label">卖家:</span> {{ book._openid ? '用户ID: ' + book._openid : '个人卖家' }}</div>
+                        <div class="book-info-row"><span class="info-label">作者:</span> {{ book.bookinfo ? book.bookinfo.author : '未知' }}</div>
                         <div class="book-info-row"><span class="info-label">价格:</span> ¥{{ book.price }}</div>
                         <div class="book-info-row"><span class="info-label">成色:</span> {{ book.condition || '二手良好' }}</div>
-                        <div class="book-info-row"><span class="info-label">发布时间:</span> {{ book.publishTime || '未知' }}</div>
-                        <div class="book-description">{{ book.description }}</div>
+                        <div class="book-info-row"><span class="info-label">发布时间:</span> {{ formatDate(book.creat) || '未知' }}</div>
+                        <div v-if="book.notes" class="book-description">{{ book.notes }}</div>
+                        <div v-if="book.bookinfo && book.bookinfo.pic" class="book-image">
+                          <img :src="book.bookinfo.pic" alt="封面" class="cover-image">
+                        </div>
                       </div>
                     </el-collapse-item>
                   </el-collapse>
@@ -214,6 +227,44 @@
         </ul>
       </div>
     </div>
+
+    <!-- 图书详情弹窗 -->
+    <el-dialog
+      title="图书详情"
+      :visible.sync="bookDetailVisible"
+      width="500px"
+      :before-close="closeBookDetail"
+      append-to-body
+      center
+    >
+      <div v-if="currentBook" class="book-detail-dialog">
+        <div class="book-detail-header">
+          <div class="book-detail-cover">
+            <img :src="getBookCoverUrl(currentBook)" alt="封面" class="detail-cover-image">
+          </div>
+          <div class="book-detail-info">
+            <h3 class="detail-book-title">{{ currentBook.title }}</h3>
+            <div class="detail-info-row"><span class="detail-label">作者:</span> {{ currentBook.author }}</div>
+            <div class="detail-info-row"><span class="detail-label">类别:</span> {{ currentBook.category }}</div>
+            <div class="detail-info-row"><span class="detail-label">价格:</span> ¥{{ currentBook.price }}</div>
+            <div class="detail-info-row"><span class="detail-label">ISBN:</span> {{ currentBook.isbn }}</div>
+            <div class="detail-info-row"><span class="detail-label">出版社:</span> {{ currentBook.publisher }}</div>
+          </div>
+        </div>
+        <div class="book-detail-description">
+          <div class="description-title">图书简介:</div>
+          <div class="description-content">{{ currentBook.description }}</div>
+        </div>
+        <div v-if="currentBook.summary" class="book-detail-summary">
+          <div class="summary-title">摘要:</div>
+          <div class="summary-content">{{ currentBook.summary }}</div>
+        </div>
+      </div>
+      <span slot="footer" class="dialog-footer">
+        <el-button @click="closeBookDetail">关闭</el-button>
+        <el-button type="primary" @click="closeBookDetail">确定</el-button>
+      </span>
+    </el-dialog>
   </div>
 </template>
 
@@ -283,7 +334,10 @@ export default {
         'field': '查询字段',
         'statType': '统计类型',
         'timeRange': '时间范围'
-      }
+      },
+      // 图书详情弹窗
+      bookDetailVisible: false,
+      currentBook: null,
     }
   },
   computed: {
@@ -466,6 +520,15 @@ export default {
       };
       return units[statType] || '个';
     },
+    
+    /**
+     * 格式化多行文本
+     */
+    formatMultiLineText(text) {
+      if (!text) return '';
+      return text.replace(/\n/g, '<br>');
+    },
+    
     /**
      * 发送消息到AI服务并获取回复
      */
@@ -663,6 +726,28 @@ export default {
       } finally {
         this.isLoading = false;
       }
+    },
+    showBookDetail(book) {
+      this.currentBook = book;
+      this.bookDetailVisible = true;
+    },
+    closeBookDetail() {
+      this.bookDetailVisible = false;
+      this.currentBook = null;
+    },
+    getBookCoverUrl(book) {
+      if (!book) return require('@/assets/images/default-cover.png');
+      
+      // 依次检查各种可能的封面URL字段
+      return book.pic
+             // 如果都没有找到，返回默认封面
+             require('@/assets/images/default-cover.png');
+    },
+    formatDate(timestamp) {
+      if (!timestamp) return '未知';
+      const date = new Date(timestamp);
+      return isNaN(date.getTime()) ? '未知' : 
+        `${date.getFullYear()}-${(date.getMonth()+1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
     }
   }
 }
@@ -1052,19 +1137,84 @@ export default {
   padding: 10px;
 }
 
-.recommendation-card {
-  padding: 15px;
-  background-color: white;
-  border-radius: 8px;
-  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+.recommended-books-horizontal {
+  padding: 10px;
+}
+
+.books-scroll-container {
+  display: flex;
+  overflow-x: auto;
+  padding: 10px 0;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  white-space: nowrap;
+  
+  &::-webkit-scrollbar {
+    height: 6px;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background-color: rgba(0, 0, 0, 0.2);
+    border-radius: 3px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background-color: rgba(0, 0, 0, 0.05);
+  }
+}
+
+.book-card {
+  flex: 0 0 auto;
+  width: 120px;
+  margin-right: 15px;
+  padding: 8px;
+  border-radius: 6px;
+  transition: all 0.3s;
+  display: inline-block;
+  vertical-align: top;
+  background-color: #fff;
+  
+  &:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+  }
+}
+
+.book-cover {
+  width: 100px;
+  height: 150px;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 5px;
+  background-color: #f5f7fa;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cover-image {
+  width: 100%;
   height: 100%;
-  overflow: auto;
+  object-fit: cover;
+}
+
+.book-info {
+  text-align: center;
 }
 
 .book-title {
-  margin-top: 0;
-  margin-bottom: 10px;
-  color: #409EFF;
+  font-weight: bold;
+  margin-bottom: 5px;
+}
+
+.book-author {
+  font-size: 12px;
+  color: #909399;
+}
+
+.book-price {
+  font-size: 14px;
+  font-weight: bold;
 }
 
 /* 统计信息样式 */
@@ -1120,5 +1270,100 @@ export default {
 /* 发布图书样式 */
 .published-book-list {
   padding: 0 10px 10px 10px;
+}
+
+/* 图书摘要和介绍样式 */
+.book-summary, .book-ai-description {
+  margin-top: 12px;
+  padding: 8px 0;
+  border-top: 1px dashed #eaeaea;
+}
+
+.summary-title, .ai-description-title {
+  font-weight: bold;
+  color: #409EFF;
+  margin-bottom: 5px;
+}
+
+.summary-content, .ai-description-content {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #606266;
+  background-color: #f9f9f9;
+  padding: 8px;
+  border-radius: 4px;
+}
+
+.ai-description-content {
+  white-space: pre-wrap;
+}
+
+// 图书详情弹窗样式
+.book-detail-dialog {
+  padding: 0 10px;
+}
+
+.book-detail-header {
+  display: flex;
+  margin-bottom: 20px;
+}
+
+.book-detail-cover {
+  width: 140px;
+  height: 200px;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.detail-cover-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.book-detail-info {
+  flex: 1;
+  margin-left: 20px;
+}
+
+.detail-book-title {
+  margin-top: 0;
+  margin-bottom: 15px;
+  color: #303133;
+  font-size: 18px;
+}
+
+.detail-info-row {
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+.detail-label {
+  font-weight: bold;
+  color: #606266;
+  margin-right: 5px;
+}
+
+.book-detail-description, .book-detail-summary {
+  margin-top: 15px;
+  padding-top: 15px;
+  border-top: 1px solid #ebeef5;
+}
+
+.description-title, .summary-title {
+  font-weight: bold;
+  margin-bottom: 8px;
+  color: #303133;
+}
+
+.description-content, .summary-content {
+  font-size: 14px;
+  line-height: 1.6;
+  color: #606266;
+  white-space: pre-wrap;
+  background-color: #f8f9fa;
+  padding: 10px;
+  border-radius: 4px;
 }
 </style> 

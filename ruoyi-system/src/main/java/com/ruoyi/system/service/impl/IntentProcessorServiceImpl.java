@@ -1,6 +1,7 @@
 package com.ruoyi.system.service.impl;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -250,6 +251,10 @@ public class IntentProcessorServiceImpl implements IIntentProcessorService
                         fieldValue = bookInfo.get("isbn");
                         fieldDesc = "ISBN";
                         break;
+                    case "summary":
+                        fieldValue = bookInfo.get("summary");
+                        fieldDesc = "摘要";
+                        break;
                     default:
                         fieldValue = bookInfo.get(field);
                         fieldDesc = field;
@@ -283,12 +288,13 @@ public class IntentProcessorServiceImpl implements IIntentProcessorService
     {
         String orderId = (String) parameters.get("orderId");
         String userId = (String) parameters.get("userId");
+        String bookName = (String) parameters.get("bookName");
 
         Map<String, Object> result = new HashMap<>();
 
-        if (StringUtils.isEmpty(orderId) && StringUtils.isEmpty(userId)) {
+        if (StringUtils.isEmpty(orderId) && StringUtils.isEmpty(userId) && StringUtils.isEmpty(bookName)) {
             result.put("success", false);
-            result.put("message", "未提供订单号或用户ID");
+            result.put("message", "未提供订单号、用户ID或图书名称");
             return result;
         }
 
@@ -324,6 +330,39 @@ public class IntentProcessorServiceImpl implements IIntentProcessorService
                 result.put("success", true);
                 result.put("data", orderInfo);
                 result.put("message", String.format("订单%s的状态是: %s", orderId, orderInfo.get("status")));
+            } else if (StringUtils.isNotEmpty(bookName)) {
+                // 按图书名称查询订单
+                List<Map<String, Object>> bookOrders = new ArrayList<>();
+                for (Map<String, Object> order : allOrders) {
+                    Object items = order.get("items");
+                    if (items instanceof List) {
+                        List<Map<String, Object>> orderItems = (List<Map<String, Object>>) items;
+                        for (Map<String, Object> item : orderItems) {
+                            String title = String.valueOf(item.get("title"));
+                            if (title != null && title.toLowerCase().contains(bookName.toLowerCase())) {
+                                bookOrders.add(order);
+                                break;
+                            }
+                        }
+                    } else {
+                        // 如果没有详细的订单项，尝试从订单描述中查找
+                        String description = String.valueOf(order.get("description"));
+                        if (description != null && description.toLowerCase().contains(bookName.toLowerCase())) {
+                            bookOrders.add(order);
+                        }
+                    }
+                }
+
+                if (bookOrders.isEmpty()) {
+                    result.put("success", false);
+                    result.put("message", String.format("未找到关于《%s》的订单", bookName));
+                    return result;
+                }
+
+                result.put("success", true);
+                result.put("data", bookOrders);
+                result.put("count", bookOrders.size());
+                result.put("message", String.format("找到%d个关于《%s》的订单", bookOrders.size(), bookName));
             } else {
                 // 按用户ID查询
                 List<Map<String, Object>> userOrders = new ArrayList<>();
@@ -360,68 +399,245 @@ public class IntentProcessorServiceImpl implements IIntentProcessorService
     public Map<String, Object> processBookRecommendation(Map<String, Object> parameters)
     {
         String category = (String) parameters.get("category");
+        Boolean smartRecommend = (Boolean) parameters.get("smartRecommend");
+        Integer collegeId = parameters.get("collegeId") instanceof Number ? 
+                            ((Number) parameters.get("collegeId")).intValue() : null;
+        Integer kindId = parameters.get("kindId") instanceof Number ?
+                        ((Number) parameters.get("kindId")).intValue() : null;
 
         Map<String, Object> result = new HashMap<>();
 
-        // 调用微信云函数获取推荐图书 - 使用getAllBooks而不是getRecommendedBooks
-        Map<String, Object> cloudFunctionResult = invokeCloudFunction("getAllBooks", new HashMap<>());
-
-        if (cloudFunctionResult != null && cloudFunctionResult.containsKey("success") && (Boolean) cloudFunctionResult.get("success")) {
-            List<Map<String, Object>> allBooks = (List<Map<String, Object>>) cloudFunctionResult.get("data");
-            List<Map<String, Object>> recommendedBooks = new ArrayList<>();
+        // 获取所有图书数据
+        Map<String, Object> booksResult = invokeCloudFunction("getAllBooks", new HashMap<>());
+        List<Map<String, Object>> allBooks = null;
+        
+        if (booksResult != null && booksResult.containsKey("success") && (Boolean) booksResult.get("success")) {
+            allBooks = (List<Map<String, Object>>) booksResult.get("data");
+        }
+        
+        if (allBooks == null || allBooks.isEmpty()) {
+            result.put("success", false);
+            result.put("message", "没有可用的图书数据");
+            return result;
+        }
+        
+        // 现在我们有所有图书数据，开始进行推荐
+        List<Map<String, Object>> recommendedBooks = new ArrayList<>();
+        
+        // 处理"all"类别为获取全部图书
+        if ("all".equalsIgnoreCase(category)) {
+            result.put("success", true);
+            result.put("count", allBooks.size());
+            result.put("data", allBooks);
+            result.put("message", String.format("为您展示平台上的所有%d本图书", allBooks.size()));
+            return result;
+        }
             
-            // 根据分类过滤图书
-            if (allBooks != null && !allBooks.isEmpty()) {
+        // 根据分类过滤图书
+        if (allBooks != null && !allBooks.isEmpty()) {
+            // 按collegeId和kindId过滤（专业和通用类别）
+            if (collegeId != null || kindId != null) {
+                for (Map<String, Object> book : allBooks) {
+                    boolean matches = true;
+                    
+                    // 按collegeId过滤
+                    if (collegeId != null) {
+                        Object bookCollegeId = book.get("collegeId");
+                        if (bookCollegeId == null || 
+                            !Integer.valueOf(collegeId).equals(
+                                bookCollegeId instanceof Number ? 
+                                ((Number) bookCollegeId).intValue() : null)) {
+                            matches = false;
+                        }
+                    }
+                    
+                    // 按kindId过滤
+                    if (matches && kindId != null) {
+                        Object bookKindId = book.get("kindId");
+                        if (bookKindId == null || 
+                            !Integer.valueOf(kindId).equals(
+                                bookKindId instanceof Number ? 
+                                ((Number) bookKindId).intValue() : null)) {
+                            matches = false;
+                        }
+                    }
+                    
+                    if (matches) {
+                        recommendedBooks.add(book);
+                    }
+                }
+            } else if (StringUtils.isNotEmpty(category)) {
                 // 首先按分类过滤
-                if (StringUtils.isNotEmpty(category)) {
+                // 创建类别映射，支持多样化的用户输入
+                Map<String, List<String>> categoryMapping = createCategoryMapping();
+                
+                // 获取匹配的类别关键词
+                List<String> matchingKeywords = new ArrayList<>();
+                for (Map.Entry<String, List<String>> entry : categoryMapping.entrySet()) {
+                    for (String keyword : entry.getValue()) {
+                        if (category.toLowerCase().contains(keyword.toLowerCase())) {
+                            matchingKeywords.addAll(entry.getValue());
+                            break;
+                        }
+                    }
+                }
+                
+                // 使用关键词过滤
+                if (!matchingKeywords.isEmpty()) {
+                    for (Map<String, Object> book : allBooks) {
+                        String bookCategory = (String) book.get("category");
+                        String bookTitle = (String) book.get("title");
+                        String bookDescription = (String) book.get("description");
+                        
+                        boolean matched = false;
+                        
+                        // 根据分类匹配
+                        if (bookCategory != null) {
+                            for (String keyword : matchingKeywords) {
+                                if (bookCategory.toLowerCase().contains(keyword.toLowerCase())) {
+                                    matched = true;
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        // 如果分类没匹配上，尝试从标题和描述中匹配
+                        if (!matched) {
+                            for (String keyword : matchingKeywords) {
+                                if ((bookTitle != null && bookTitle.toLowerCase().contains(keyword.toLowerCase())) ||
+                                    (bookDescription != null && bookDescription.toLowerCase().contains(keyword.toLowerCase()))) {
+                                    matched = true;
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        if (matched) {
+                            recommendedBooks.add(book);
+                        }
+                    }
+                } else {
+                    // 如果没有匹配的映射类别，直接用原始类别搜索
                     for (Map<String, Object> book : allBooks) {
                         String bookCategory = (String) book.get("category");
                         if (bookCategory != null && bookCategory.toLowerCase().contains(category.toLowerCase())) {
                             recommendedBooks.add(book);
                         }
                     }
-                } else {
-                    // 如果没有指定分类，复制所有图书
-                    recommendedBooks.addAll(allBooks);
-                }
-                
-                // 如果结果较多，随机选择最多3本
-                if (recommendedBooks.size() > 3) {
-                    List<Map<String, Object>> selectedBooks = new ArrayList<>();
-                    // 使用简单随机选择
-                    java.util.Random random = new java.util.Random();
-                    for (int i = 0; i < 3; i++) {
-                        int randomIndex = random.nextInt(recommendedBooks.size());
-                        selectedBooks.add(recommendedBooks.get(randomIndex));
-                        recommendedBooks.remove(randomIndex); // 避免重复选择
-                    }
-                    recommendedBooks = selectedBooks;
-                }
-            }
-
-            result.put("success", true);
-            result.put("count", recommendedBooks.size());
-            result.put("data", recommendedBooks);
-
-            if (recommendedBooks.isEmpty()) {
-                if (StringUtils.isNotEmpty(category)) {
-                    result.put("message", String.format("没有找到%s类别的图书推荐", category));
-                } else {
-                    result.put("message", "没有找到推荐图书");
                 }
             } else {
-                if (StringUtils.isNotEmpty(category)) {
-                    result.put("message", String.format("为您推荐%d本%s类别的图书", recommendedBooks.size(), category));
-                } else {
-                    result.put("message", "为您推荐以下图书");
+                // 如果没有指定分类，复制所有图书
+                recommendedBooks.addAll(allBooks);
+            }
+            
+            // 如果结果较多，随机选择最多5本
+            if (recommendedBooks.size() > 5) {
+                List<Map<String, Object>> selectedBooks = new ArrayList<>();
+                // 使用简单随机选择
+                java.util.Random random = new java.util.Random();
+                for (int i = 0; i < 5; i++) {
+                    int randomIndex = random.nextInt(recommendedBooks.size());
+                    selectedBooks.add(recommendedBooks.get(randomIndex));
+                    recommendedBooks.remove(randomIndex); // 避免重复选择
                 }
+                recommendedBooks = selectedBooks;
+            }
+        }
+
+        result.put("success", true);
+        result.put("count", recommendedBooks.size());
+        result.put("data", recommendedBooks);
+
+        if (recommendedBooks.isEmpty()) {
+            if (collegeId != null) {
+                String collegeName = getCollegeNameById(collegeId);
+                result.put("message", String.format("没有找到%s学院的图书推荐", collegeName));
+            } else if (StringUtils.isNotEmpty(category)) {
+                result.put("message", String.format("没有找到%s类别的图书推荐", category));
+            } else {
+                result.put("message", "没有找到推荐图书");
             }
         } else {
-            result.put("success", false);
-            result.put("message", cloudFunctionResult != null ? cloudFunctionResult.get("message") : "获取图书推荐失败");
+            if (collegeId != null) {
+                String collegeName = getCollegeNameById(collegeId);
+                result.put("message", String.format("为您推荐%d本%s学院的图书", recommendedBooks.size(), collegeName));
+            } else if (StringUtils.isNotEmpty(category)) {
+                result.put("message", String.format("为您推荐%d本%s类别的图书", recommendedBooks.size(), category));
+            } else {
+                result.put("message", "为您推荐以下图书");
+            }
         }
 
         return result;
+    }
+    
+    /**
+     * 创建类别映射表
+     */
+    private Map<String, List<String>> createCategoryMapping() {
+        Map<String, List<String>> mapping = new HashMap<>();
+        
+        // 学科类别映射
+        mapping.put("计算机", Arrays.asList("计算机", "编程", "软件", "开发", "java", "python", "c++", "算法", "编码", "数据结构", "程序", "网络", "安全"));
+        mapping.put("数学", Arrays.asList("数学", "高数", "线代", "线性代数", "微积分", "离散", "概率", "统计"));
+        mapping.put("文学", Arrays.asList("文学", "小说", "诗歌", "散文", "戏剧", "文集", "名著"));
+        mapping.put("历史", Arrays.asList("历史", "考古", "文明", "古代", "近代", "革命", "战争", "传记", "纪实"));
+        mapping.put("艺术", Arrays.asList("艺术", "音乐", "绘画", "设计", "建筑", "摄影", "电影", "舞蹈", "美术"));
+        mapping.put("科学", Arrays.asList("科学", "物理", "化学", "生物", "地质", "天文", "医学", "宇宙", "科普"));
+        mapping.put("经济", Arrays.asList("经济", "金融", "投资", "股票", "基金", "理财", "会计", "管理", "商业"));
+        mapping.put("教育", Arrays.asList("教育", "考研", "考试", "教材", "学习", "教学", "课程", "课本"));
+        
+        // CUG专业学院类别映射
+        mapping.put("计算机学院", Arrays.asList("计算机", "计算机学院", "计科", "软工", "网安", "人工智能", "大数据"));
+        mapping.put("地信学院", Arrays.asList("地信", "地信学院", "地理信息", "遥感", "测绘", "导航", "地图"));
+        mapping.put("环境学院", Arrays.asList("环境", "环境学院", "环境工程", "生态", "水文", "大气", "污染"));
+        mapping.put("经管学院", Arrays.asList("经管", "经管学院", "经济", "管理", "会计", "金融", "市场营销"));
+        mapping.put("材化学院", Arrays.asList("材化", "材化学院", "材料", "化学", "高分子", "无机"));
+        mapping.put("外国语学院", Arrays.asList("英语", "外国语学院", "外语", "翻译", "日语", "法语", "德语"));
+        mapping.put("地质学院", Arrays.asList("地质", "地质学院", "地质学", "岩石", "矿物", "古生物"));
+        mapping.put("珠宝学院", Arrays.asList("珠宝", "珠宝学院", "宝石", "首饰", "玉石", "鉴定"));
+        mapping.put("自动化学院", Arrays.asList("自动化", "自动化学院", "控制", "电气", "机器人"));
+        mapping.put("艺媒学院", Arrays.asList("艺媒", "艺媒学院", "艺术", "设计", "传媒", "动画"));
+        mapping.put("体育学院", Arrays.asList("体育", "体育学院", "运动", "健身", "竞技"));
+        mapping.put("工程学院", Arrays.asList("工程", "工程学院", "土木", "建筑", "工程力学"));
+        mapping.put("机电学院", Arrays.asList("机电", "机电学院", "机械", "电子", "汽车"));
+        mapping.put("公管学院", Arrays.asList("公管", "公管学院", "公共管理", "政治", "行政"));
+        mapping.put("马克思学院", Arrays.asList("马克思", "马克思学院", "哲学", "政治学", "思想"));
+        mapping.put("海洋学院", Arrays.asList("海洋", "海洋学院", "海洋科学", "海洋地质"));
+        mapping.put("新能源学院", Arrays.asList("新能源", "新能源学院", "能源", "电力", "可再生"));
+        mapping.put("李四光学院", Arrays.asList("李四光", "李四光学院", "基础科学"));
+        mapping.put("其他学院", Arrays.asList("其他", "通识", "公共课"));
+        
+        return mapping;
+    }
+
+    /**
+     * 根据学院ID获取学院名称
+     */
+    private String getCollegeNameById(Integer collegeId) {
+        if (collegeId == null) return "未知";
+        
+        switch (collegeId) {
+            case 0: return "计算机";
+            case 1: return "地信";
+            case 2: return "环境";
+            case 3: return "经管";
+            case 4: return "材化";
+            case 5: return "英语";
+            case 6: return "地质";
+            case 7: return "珠宝";
+            case 8: return "自动化";
+            case 9: return "艺媒";
+            case 10: return "体育";
+            case 11: return "工程";
+            case 12: return "机电";
+            case 13: return "公管";
+            case 14: return "马克思";
+            case 15: return "海洋";
+            case 16: return "新能源/李四光";
+            case 17: return "其他";
+            default: return "未知学院";
+        }
     }
 
     /**
@@ -433,6 +649,9 @@ public class IntentProcessorServiceImpl implements IIntentProcessorService
         String author = (String) parameters.get("author");
         String isbn = (String) parameters.get("isbn");
         String category = (String) parameters.get("category");
+        boolean listAll = bookName == null && author == null && isbn == null && 
+                         (parameters.containsKey("listAll") || 
+                          Boolean.TRUE.equals(parameters.get("listAll")));
 
         // 调用微信云函数查询发布的图书
         Map<String, Object> cloudFunctionResult = invokeCloudFunction("getAllPublishedBooks", new HashMap<>());
@@ -441,6 +660,24 @@ public class IntentProcessorServiceImpl implements IIntentProcessorService
 
         if (cloudFunctionResult != null && cloudFunctionResult.containsKey("success") && (Boolean) cloudFunctionResult.get("success")) {
             List<Map<String, Object>> allBooks = (List<Map<String, Object>>) cloudFunctionResult.get("data");
+            
+            // 如果是查询所有在售图书
+            if (listAll || (StringUtils.isEmpty(bookName) && StringUtils.isEmpty(author) && 
+                StringUtils.isEmpty(isbn) && StringUtils.isEmpty(category))) {
+                result.put("success", true);
+                result.put("listAll", true);
+                
+                if (allBooks == null || allBooks.isEmpty()) {
+                    result.put("count", 0);
+                    result.put("data", new ArrayList<>());
+                    result.put("message", "当前平台没有在售图书");
+                } else {
+                    result.put("count", allBooks.size());
+                    result.put("data", allBooks);
+                    result.put("message", String.format("当前平台共有%d本在售图书", allBooks.size()));
+                }
+                return result;
+            }
             
             // 在本地过滤结果
             List<Map<String, Object>> filteredBooks = new ArrayList<>();

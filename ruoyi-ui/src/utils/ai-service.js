@@ -139,6 +139,39 @@ export function getSimulatedResponse(message) {
   // 清理消息文本，便于关键词匹配
   const cleanMessage = message.toLowerCase();
   
+  // 处理简单问候和模糊查询 - 提供更智能的回应
+  if (cleanMessage.match(/^(你好|您好|hi|hello|嗨|哈喽)$/)) {
+    response.intent = "greeting";
+    response.parameters.message = "您好，我是校园二手书交易平台智能助手，可以帮您查询图书、订单等信息，请问有什么可以帮到您？";
+    return JSON.stringify(response, null, 2);
+  }
+  
+  if (cleanMessage.match(/^(谢谢|感谢|thank|thanks|多谢)$/)) {
+    response.intent = "thanks";
+    response.parameters.message = "不客气，很高兴能帮到您。如有其他问题，随时可以询问我。";
+    return JSON.stringify(response, null, 2);
+  }
+  
+  if (cleanMessage.match(/^(再见|拜拜|bye|goodbye)$/)) {
+    response.intent = "farewell";
+    response.parameters.message = "再见，期待下次为您服务！";
+    return JSON.stringify(response, null, 2);
+  }
+  
+  if (cleanMessage.includes("有什么书") || cleanMessage === "书" || cleanMessage === "图书") {
+    response.intent = "book_recommendation";
+    response.parameters.category = "all";
+    response.parameters.smartRecommend = true;
+    return JSON.stringify(response, null, 2);
+  }
+  
+  // 其他模糊不明确的查询，尝试引导用户
+  if (cleanMessage.length < 5 && !cleanMessage.includes("书") && !cleanMessage.includes("订单")) {
+    response.intent = "guide";
+    response.parameters.message = "您可以询问以下内容：\n1. 查询特定图书（如：有没有Java编程思想这本书）\n2. 查询在售图书（如：有人在卖算法导论吗）\n3. 查询图书详情（如：Java编程思想的价格是多少）\n4. 查询订单（如：订单12345的状态）\n5. 获取图书推荐（如：推荐几本计算机类的书）";
+    return JSON.stringify(response, null, 2);
+  }
+  
   // 根据关键词提取意图和参数
   if (cleanMessage.includes("图书") || cleanMessage.includes("书") || 
       cleanMessage.includes("有没有") || cleanMessage.includes("找") || 
