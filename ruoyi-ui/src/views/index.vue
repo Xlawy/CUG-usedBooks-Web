@@ -26,11 +26,11 @@
         <el-card class="chart-card" shadow="hover" v-loading="isLoading">
           <div slot="header" class="clearfix">
             <span>二手书分类统计</span>
-            <el-tooltip content="展示各类图书的数量占比" placement="top">
+            <el-tooltip content="展示各学院图书的数量占比" placement="top">
               <i class="el-icon-info" style="margin-left: 10px;color:#909399;"></i>
             </el-tooltip>
           </div>
-          <pie-chart />
+          <pie-chart ref="pieChart" />
         </el-card>
       </el-col>
       <el-col :xs="24" :sm="24" :lg="12">
@@ -83,7 +83,7 @@ import PieChart from './dashboard/PieChart'
 import BarChart from './dashboard/BarChart'
 import RaddarChart from './dashboard/RaddarChart'
 import { parseTime } from '@/utils/ruoyi'
-import { getAllStatistics } from '@/api/statistics'
+import { getAllStatistics, getMonthlyOrdersStats } from '@/api/statistics'
 
 export default {
   name: "Index",
@@ -142,6 +142,10 @@ export default {
     // 手动刷新数据
     refreshData() {
       this.fetchStatisticsData(true);
+      // 刷新饼图数据
+      if (this.$refs.pieChart) {
+        this.$refs.pieChart.fetchData();
+      }
     },
     handleSetLineChartData(type) {
       switch (type) {
@@ -190,6 +194,9 @@ export default {
           this.statisticsData.books = statistics.books || 0;
           this.statisticsData.publishedBooks = statistics.publishedBooks || 0;
           
+          // 获取当月订单统计数据
+          await this.fetchMonthlyOrdersStats();
+          
           // 更新最后数据刷新时间
           this.lastUpdateTime = parseTime(new Date());
         } else {
@@ -206,6 +213,24 @@ export default {
         }
       }
     },
+    // 获取月度订单统计数据
+    async fetchMonthlyOrdersStats(yearMonth) {
+      try {
+        const response = await getMonthlyOrdersStats(yearMonth || parseTime(new Date(), '{y}-{m}'));
+        if (response && response.data && response.data.success) {
+          this.lineChartData = {
+            expectedData: response.data.expectedData,
+            actualData: response.data.actualData
+          };
+        }
+      } catch (error) {
+        console.error('获取月度订单统计失败:', error);
+      }
+    },
+    // 处理月份选择变化
+    handleMonthChange(date) {
+      this.fetchMonthlyOrdersStats(date);
+    }
   }
 };
 </script>

@@ -53,4 +53,27 @@ export function getPublishedBooksStatistics() {
     url: '/system/statistics/publishedBooks',
     method: 'get'
   })
+}
+
+/**
+ * 获取月度订单统计数据
+ * @param {string} yearMonth 年月，格式：yyyy-MM
+ * @returns {Promise} 返回月度订单统计数据的Promise
+ */
+export function getMonthlyOrdersStats(yearMonth) {
+  return request({
+    url: `/system/statistics/orders/monthly/${yearMonth}`,
+    method: 'get'
+  })
+}
+
+/**
+ * 获取学院图书统计数据
+ * @returns {Promise} 返回学院图书统计数据的Promise
+ */
+export function getCollegeBookStats() {
+  return request({
+    url: '/system/statistics/books/college',
+    method: 'get'
+  })
 } 

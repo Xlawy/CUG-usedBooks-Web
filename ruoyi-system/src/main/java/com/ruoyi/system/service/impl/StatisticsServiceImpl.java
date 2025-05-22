@@ -1,6 +1,7 @@
 package com.ruoyi.system.service.impl;
 
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -254,6 +255,82 @@ public class StatisticsServiceImpl implements IStatisticsService
     }
 
     /**
+     * 获取指定月份的订单统计数据
+     * @param yearMonth 年月，格式：yyyy-MM
+     * @return 统计数据
+     */
+    public Map<String, Object> getMonthlyOrdersStats(String yearMonth) {
+        Map<String, Object> result = new HashMap<>();
+        Map<String, Object> params = new HashMap<>();
+        
+        try {
+            // 解析年月
+            String[] parts = yearMonth.split("-");
+            int year = Integer.parseInt(parts[0]);
+            int month = Integer.parseInt(parts[1]);
+            
+            // 计算月初和月末时间戳
+            Calendar cal = Calendar.getInstance();
+            cal.set(year, month - 1, 1, 0, 0, 0);
+            cal.set(Calendar.MILLISECOND, 0);
+            long monthStart = cal.getTimeInMillis();
+            
+            cal.set(year, month - 1, cal.getActualMaximum(Calendar.DAY_OF_MONTH), 23, 59, 59);
+            cal.set(Calendar.MILLISECOND, 999);
+            long monthEnd = cal.getTimeInMillis();
+            
+            // 设置查询参数
+            params.put("startTime", monthStart);
+            params.put("endTime", monthEnd);
+            
+            Map<String, Object> ordersResult = invokeCloudFunction("getAllOrders", params);
+            
+            if (ordersResult != null && ordersResult.containsKey("success") && (Boolean) ordersResult.get("success")) {
+                List<Map<String, Object>> orders = (List<Map<String, Object>>) ordersResult.get("data");
+                
+                // 初始化每天的统计数据
+                int daysInMonth = cal.getActualMaximum(Calendar.DAY_OF_MONTH);
+                int[] orderCounts = new int[daysInMonth];
+                int[] completedOrderCounts = new int[daysInMonth];
+                
+                // 统计每天的订单数和完成数
+                if (orders != null) {
+                    for (Map<String, Object> order : orders) {
+                        // 获取订单创建时间
+                        Long createTime = ((Number) order.get("creat")).longValue();
+                        Calendar orderCal = Calendar.getInstance();
+                        orderCal.setTimeInMillis(createTime);
+                        int day = orderCal.get(Calendar.DAY_OF_MONTH) - 1;
+                        
+                        // 统计订单数
+                        orderCounts[day]++;
+                        
+                        // 统计已完成订单数（status=2表示已完成）
+                        Integer status = ((Number) order.get("status")).intValue();
+                        if (status == 2) {
+                            completedOrderCounts[day]++;
+                        }
+                    }
+                }
+                
+                result.put("success", true);
+                result.put("expectedData", orderCounts);
+                result.put("actualData", completedOrderCounts);
+                result.put("message", "获取月度订单统计成功");
+            } else {
+                result.put("success", false);
+                result.put("message", "获取月度订单统计失败");
+            }
+        } catch (Exception e) {
+            log.error("获取月度订单统计异常", e);
+            result.put("success", false);
+            result.put("message", "获取月度订单统计异常：" + e.getMessage());
+        }
+        
+        return result;
+    }
+
+    /**
      * 调用微信云函数
      * 
      * @param functionName 云函数名称
@@ -471,5 +548,88 @@ public class StatisticsServiceImpl implements IStatisticsService
         }
         
         return null;
+    }
+
+    @Override
+    public Map<String, Object> getCollegeBookStats() {
+        String cacheKey = CACHE_STATS_PREFIX + "collegeBooks";
+        Map<String, Object> cachedResult = redisCache.getCacheObject(cacheKey);
+        if (cachedResult != null) {
+            return cachedResult;
+        }
+
+        Map<String, Object> result = new HashMap<>();
+        Map<String, Object> params = new HashMap<>();
+        params.put("status", 0); // 只统计在售图书
+
+        Map<String, Object> booksResult = invokeCloudFunction("getAllPublishedBooks", params);
+        
+        if (booksResult != null && booksResult.containsKey("success") && (Boolean) booksResult.get("success")) {
+            List<Map<String, Object>> books = (List<Map<String, Object>>) booksResult.get("data");
+            
+            // 初始化学院统计数据
+            Map<String, String> collegeMap = new HashMap<>();
+            collegeMap.put("0", "计算机");
+            collegeMap.put("1", "地信");
+            collegeMap.put("2", "环境");
+            collegeMap.put("3", "经管");
+            collegeMap.put("4", "材化");
+            collegeMap.put("5", "英语");
+            collegeMap.put("6", "地质");
+            collegeMap.put("7", "珠宝");
+            collegeMap.put("8", "自动化");
+            collegeMap.put("9", "艺媒");
+            collegeMap.put("10", "体育");
+            collegeMap.put("11", "工程");
+            collegeMap.put("12", "机电");
+            collegeMap.put("13", "公管");
+            collegeMap.put("14", "马克思");
+            collegeMap.put("15", "海洋");
+            collegeMap.put("16", "新能源");
+            collegeMap.put("17", "其他");
+            collegeMap.put("-1", "其他"); // 未分类的也算作其他
+
+            // 统计各学院图书数量
+            Map<String, Integer> collegeStats = new HashMap<>();
+            for (String collegeId : collegeMap.keySet()) {
+                collegeStats.put(collegeId, 0);
+            }
+
+            if (books != null) {
+                for (Map<String, Object> book : books) {
+                    String collegeId = String.valueOf(book.get("collegeid"));
+                    if (collegeId == null) {
+                        collegeId = "-1";
+                    }
+                    // 如果collegeId不在预定义的映射中，归类为"其他"
+                    if (!collegeMap.containsKey(collegeId)) {
+                        collegeId = "17";
+                    }
+                    collegeStats.put(collegeId, collegeStats.get(collegeId) + 1);
+                }
+            }
+
+            // 构建返回数据
+            List<Map<String, Object>> pieData = new ArrayList<>();
+            for (Map.Entry<String, Integer> entry : collegeStats.entrySet()) {
+                if (entry.getValue() > 0) { // 只返回有图书的学院
+                    Map<String, Object> item = new HashMap<>();
+                    item.put("name", collegeMap.get(entry.getKey()));
+                    item.put("value", entry.getValue());
+                    pieData.add(item);
+                }
+            }
+
+            result.put("success", true);
+            result.put("data", pieData);
+            result.put("message", "获取学院图书统计成功");
+        } else {
+            result.put("success", false);
+            result.put("message", "获取学院图书统计失败");
+        }
+
+        // 缓存结果
+        redisCache.setCacheObject(cacheKey, result, STATISTICS_CACHE_SECONDS, TimeUnit.SECONDS);
+        return result;
     }
 } 

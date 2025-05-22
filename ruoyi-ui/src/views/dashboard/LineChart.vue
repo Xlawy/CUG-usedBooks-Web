@@ -1,11 +1,24 @@
 <template>
-  <div :class="className" :style="{height:height,width:width}" />
+  <div class="chart-container">
+    <div class="chart-header">
+      <el-date-picker
+        v-model="selectedDate"
+        type="month"
+        placeholder="选择月份"
+        format="yyyy年MM月"
+        value-format="yyyy-MM"
+        @change="handleDateChange"
+      />
+    </div>
+    <div :class="className" :style="{height:height,width:width}" />
+  </div>
 </template>
 
 <script>
 import * as echarts from 'echarts'
 require('echarts/theme/macarons') // echarts theme
 import resize from './mixins/resize'
+import { parseTime } from '@/utils/ruoyi'
 
 export default {
   mixins: [resize],
@@ -33,7 +46,8 @@ export default {
   },
   data() {
     return {
-      chart: null
+      chart: null,
+      selectedDate: parseTime(new Date(), '{y}-{m}') // 默认选择当前月份
     }
   },
   watch: {
@@ -57,14 +71,25 @@ export default {
     this.chart = null
   },
   methods: {
+    handleDateChange(date) {
+      this.$emit('dateChange', date)
+    },
     initChart() {
-      this.chart = echarts.init(this.$el, 'macarons')
+      this.chart = echarts.init(this.$el.querySelector('.' + this.className), 'macarons')
       this.setOptions(this.chartData)
     },
-    setOptions({ expectedData, actualData } = {}) {
+    setOptions({ expectedData, actualData, xAxisData } = {}) {
+      if (!xAxisData) {
+        // 如果没有提供x轴数据，则生成当月的天数数组
+        const year = parseInt(this.selectedDate.split('-')[0])
+        const month = parseInt(this.selectedDate.split('-')[1])
+        const daysInMonth = new Date(year, month, 0).getDate()
+        xAxisData = Array.from({length: daysInMonth}, (_, i) => (i + 1) + '日')
+      }
+
       this.chart.setOption({
         xAxis: {
-          data: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'],
+          data: xAxisData,
           boundaryGap: false,
           axisTick: {
             show: false
@@ -82,7 +107,14 @@ export default {
           axisPointer: {
             type: 'cross'
           },
-          padding: [5, 10]
+          padding: [5, 10],
+          formatter: function(params) {
+            let result = params[0].axisValue + '<br/>'
+            params.forEach(param => {
+              result += param.seriesName + ': ' + param.value + '<br/>'
+            })
+            return result
+          }
         },
         yAxis: {
           axisTick: {
@@ -134,3 +166,15 @@ export default {
   }
 }
 </script>
+
+<style scoped>
+.chart-container {
+  width: 100%;
+  height: 100%;
+}
+
+.chart-header {
+  padding: 10px;
+  text-align: right;
+}
+</style>

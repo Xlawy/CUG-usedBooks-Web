@@ -6,6 +6,7 @@
 import * as echarts from 'echarts'
 require('echarts/theme/macarons') // echarts theme
 import resize from './mixins/resize'
+import { getCollegeBookStats } from '@/api/statistics'
 
 export default {
   mixins: [resize],
@@ -26,20 +27,13 @@ export default {
   data() {
     return {
       chart: null,
-      bookCategories: [
-        { value: 120, name: '计算机/IT' },
-        { value: 85, name: '文学艺术' },
-        { value: 70, name: '经济管理' },
-        { value: 65, name: '理学工程' },
-        { value: 50, name: '地质学' },
-        { value: 40, name: '外语' },
-        { value: 30, name: '其他' }
-      ]
+      collegeStats: []
     }
   },
   mounted() {
     this.$nextTick(() => {
       this.initChart()
+      this.fetchData()
     })
   },
   beforeDestroy() {
@@ -50,31 +44,58 @@ export default {
     this.chart = null
   },
   methods: {
+    async fetchData() {
+      try {
+        const response = await getCollegeBookStats()
+        if (response.data && response.data.success) {
+          this.collegeStats = response.data.data
+          this.updateChart()
+        } else {
+          this.$message.error('获取学院图书统计数据失败')
+        }
+      } catch (error) {
+        console.error('获取学院图书统计数据出错:', error)
+        this.$message.error('获取学院图书统计数据出错')
+      }
+    },
     initChart() {
       this.chart = echarts.init(this.$el, 'macarons')
+      this.updateChart()
+    },
+    updateChart() {
+      if (!this.chart) {
+        return
+      }
 
-      const categoryNames = this.bookCategories.map(item => item.name);
+      const categoryNames = this.collegeStats.map(item => item.name)
 
       this.chart.setOption({
         tooltip: {
           trigger: 'item',
-          formatter: '{a} <br/>{b} : {c} ({d}%)'
+          formatter: '{a} <br/>{b} : {c}本 ({d}%)'
         },
         legend: {
-          left: 'center',
-          bottom: '10',
+          type: 'scroll',
+          orient: 'vertical',
+          right: 10,
+          top: 20,
+          bottom: 20,
           data: categoryNames
         },
         series: [
           {
-            name: '图书分类',
+            name: '学院图书',
             type: 'pie',
-            roseType: 'radius',
-            radius: [15, 95],
-            center: ['50%', '38%'],
-            data: this.bookCategories,
-            animationEasing: 'cubicInOut',
-            animationDuration: 2600
+            radius: ['40%', '70%'],
+            center: ['40%', '50%'],
+            data: this.collegeStats,
+            emphasis: {
+              itemStyle: {
+                shadowBlur: 10,
+                shadowOffsetX: 0,
+                shadowColor: 'rgba(0, 0, 0, 0.5)'
+              }
+            }
           }
         ]
       })
