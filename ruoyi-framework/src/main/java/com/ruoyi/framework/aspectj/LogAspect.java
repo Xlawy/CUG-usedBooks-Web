@@ -95,39 +95,61 @@ public class LogAspect
             // 请求的地址
             String ip = IpUtils.getIpAddr();
             operLog.setOperIp(ip);
-            operLog.setOperUrl(StringUtils.substring(ServletUtils.getRequest().getRequestURI(), 0, 255));
+            
+            // 添加详细日志记录
+            log.info("=====开始记录操作日志=====");
+            log.info("操作IP: {}", ip);
+            
+            String requestUri = ServletUtils.getRequest().getRequestURI();
+            operLog.setOperUrl(StringUtils.substring(requestUri, 0, 255));
+            log.info("请求URL: {}", requestUri);
+            
             if (loginUser != null)
             {
                 operLog.setOperName(loginUser.getUsername());
+                log.info("操作用户: {}", loginUser.getUsername());
+                
                 SysUser currentUser = loginUser.getUser();
                 if (StringUtils.isNotNull(currentUser) && StringUtils.isNotNull(currentUser.getDept()))
                 {
                     operLog.setDeptName(currentUser.getDept().getDeptName());
+                    log.info("所属部门: {}", currentUser.getDept().getDeptName());
                 }
             }
 
             if (e != null)
             {
                 operLog.setStatus(BusinessStatus.FAIL.ordinal());
-                operLog.setErrorMsg(StringUtils.substring(Convert.toStr(e.getMessage(), ExceptionUtil.getExceptionMessage(e)), 0, 2000));
+                String errorMsg = StringUtils.substring(Convert.toStr(e.getMessage(), ExceptionUtil.getExceptionMessage(e)), 0, 2000);
+                operLog.setErrorMsg(errorMsg);
+                log.error("操作异常: {}", errorMsg);
             }
+            
             // 设置方法名称
             String className = joinPoint.getTarget().getClass().getName();
             String methodName = joinPoint.getSignature().getName();
             operLog.setMethod(className + "." + methodName + "()");
+            log.info("调用方法: {}.{}()", className, methodName);
+            
             // 设置请求方式
             operLog.setRequestMethod(ServletUtils.getRequest().getMethod());
+            log.info("请求方式: {}", operLog.getRequestMethod());
+            
             // 处理设置注解上的参数
             getControllerMethodDescription(joinPoint, controllerLog, operLog, jsonResult);
+            
             // 设置消耗时间
             operLog.setCostTime(System.currentTimeMillis() - TIME_THREADLOCAL.get());
+            log.info("操作耗时: {}ms", operLog.getCostTime());
+            
             // 保存数据库
             AsyncManager.me().execute(AsyncFactory.recordOper(operLog));
+            log.info("=====操作日志记录完成=====");
         }
         catch (Exception exp)
         {
             // 记录本地异常日志
-            log.error("异常信息:{}", exp.getMessage());
+            log.error("记录操作日志异常: {}", exp.getMessage());
             exp.printStackTrace();
         }
         finally

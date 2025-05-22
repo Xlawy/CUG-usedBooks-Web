@@ -804,6 +804,9 @@ public class IntentProcessorServiceImpl implements IIntentProcessorService
      */
     @SuppressWarnings("unchecked")
     private Map<String, Object> invokeCloudFunction(String functionName, Map<String, Object> params) {
+        Map<String, Object> result = null;
+        Exception exception = null;
+        
         try {
             // 检查云函数名称是否在可用的云函数列表中
             List<String> availableFunctions = List.of(
@@ -829,23 +832,22 @@ public class IntentProcessorServiceImpl implements IIntentProcessorService
                         break;
                     default:
                         // 默认返回错误
-                        Map<String, Object> errorResult = new HashMap<>();
-                        errorResult.put("success", false);
-                        errorResult.put("message", "请求的云函数'" + functionName + "'不存在");
-                        return errorResult;
+                        result = new HashMap<>();
+                        result.put("success", false);
+                        result.put("message", "请求的云函数'" + functionName + "'不存在");
+                        return result;
                 }
                 log.info("已将请求重定向到云函数: {}", functionName);
             }
 
             // 获取微信小程序的access_token
-            String accessToken = getWxAccessToken();
-
+            String accessToken = getWxAccessToken(false);
             if (StringUtils.isEmpty(accessToken)) {
                 log.error("无法获取微信小程序access_token");
-                Map<String, Object> errorResult = new HashMap<>();
-                errorResult.put("success", false);
-                errorResult.put("message", "无法获取微信接口访问凭证");
-                return errorResult;
+                result = new HashMap<>();
+                result.put("success", false);
+                result.put("message", "无法获取微信接口访问凭证");
+                return result;
             }
 
             // 构建请求URL
@@ -857,46 +859,90 @@ public class IntentProcessorServiceImpl implements IIntentProcessorService
             headers.setContentType(MediaType.APPLICATION_JSON);
 
             String jsonParams = JSON.toJSONString(params);
+            log.info("调用云函数 {}, 参数: {}", functionName, jsonParams);
 
             HttpEntity<String> requestEntity = new HttpEntity<>(jsonParams, headers);
 
             try {
                 // 发送请求
                 ResponseEntity<String> responseEntity = restTemplate.postForEntity(url, requestEntity, String.class);
+                log.info("云函数 {} 响应状态: {}", functionName, responseEntity.getStatusCode());
 
                 if (responseEntity.getStatusCode().is2xxSuccessful()) {
                     String responseBody = responseEntity.getBody();
                     JSONObject responseJson = JSON.parseObject(responseBody);
+                    log.info("云函数 {} 响应内容: {}", functionName, responseBody);
 
                     if (responseJson.getIntValue("errcode") == 0) {
                         String respData = responseJson.getString("resp_data");
-                        return JSON.parseObject(respData, Map.class);
+                        result = JSON.parseObject(respData, Map.class);
+                        if (result == null) {
+                            result = new HashMap<>();
+                            result.put("success", true);
+                            result.put("data", new ArrayList<>());
+                            result.put("total", 0);
+                        }
+                    } else if (responseJson.getIntValue("errcode") == 40001) {
+                        // access_token 无效，尝试强制刷新
+                        log.info("access_token无效，尝试强制刷新");
+                        accessToken = getWxAccessToken(true);
+                        if (StringUtils.isNotEmpty(accessToken)) {
+                            // 使用新的token重试
+                            url = String.format("%s?access_token=%s&env=%s&name=%s",
+                                    WX_CLOUD_FUNCTION_URL, accessToken, wxCloudEnv, functionName);
+                            responseEntity = restTemplate.postForEntity(url, requestEntity, String.class);
+                            responseBody = responseEntity.getBody();
+                            responseJson = JSON.parseObject(responseBody);
+                            log.info("使用新token重试，响应: {}", responseBody);
+                            
+                            if (responseJson.getIntValue("errcode") == 0) {
+                                String respData = responseJson.getString("resp_data");
+                                result = JSON.parseObject(respData, Map.class);
+                                if (result == null) {
+                                    result = new HashMap<>();
+                                    result.put("success", true);
+                                    result.put("data", new ArrayList<>());
+                                    result.put("total", 0);
+                                }
+                            }
+                        }
+                        if (result == null) {
+                            log.error("微信云函数调用失败，即使刷新token后也失败: {}", responseJson.getString("errmsg"));
+                            result = new HashMap<>();
+                            result.put("success", false);
+                            result.put("message", "调用云函数失败: " + responseJson.getString("errmsg"));
+                        }
                     } else {
                         log.error("微信云函数调用失败: {}", responseJson.getString("errmsg"));
-                        Map<String, Object> errorResult = new HashMap<>();
-                        errorResult.put("success", false);
-                        errorResult.put("message", "调用云函数失败: " + responseJson.getString("errmsg"));
-                        return errorResult;
+                        result = new HashMap<>();
+                        result.put("success", false);
+                        result.put("message", "调用云函数失败: " + responseJson.getString("errmsg"));
                     }
                 } else {
                     log.error("微信云函数调用HTTP请求失败: {}", responseEntity.getStatusCode());
-                    Map<String, Object> errorResult = new HashMap<>();
-                    errorResult.put("success", false);
-                    errorResult.put("message", "调用云函数HTTP请求失败: " + responseEntity.getStatusCode());
-                    return errorResult;
+                    result = new HashMap<>();
+                    result.put("success", false);
+                    result.put("message", "调用云函数HTTP请求失败: " + responseEntity.getStatusCode());
                 }
             } catch (Exception e) {
                 log.error("调用微信云函数HTTP请求异常: {}", e.getMessage(), e);
-                // 返回一个模拟的结果，使请求不会完全失败
-                return getSimulatedResult(functionName, params);
+                exception = e;
+                result = new HashMap<>();
+                result.put("success", false);
+                result.put("message", "调用云函数HTTP请求异常: " + e.getMessage());
             }
         } catch (Exception e) {
             log.error("调用微信云函数处理异常: {}", e.getMessage(), e);
-            Map<String, Object> errorResult = new HashMap<>();
-            errorResult.put("success", false);
-            errorResult.put("message", "调用云函数异常: " + e.getMessage());
-            return errorResult;
+            exception = e;
+            result = new HashMap<>();
+            result.put("success", false);
+            result.put("message", "调用云函数异常: " + e.getMessage());
+        } finally {
+            // 记录操作日志
+            com.ruoyi.system.utils.CloudFunctionLogUtils.recordCloudFunctionLog(functionName, params, result, exception);
         }
+        
+        return result;
     }
 
     /**
@@ -989,7 +1035,7 @@ public class IntentProcessorServiceImpl implements IIntentProcessorService
      *
      * @return access_token
      */
-    private String getWxAccessToken() {
+    private String getWxAccessToken(boolean forceRefresh) {
         try {
             // 从系统配置中获取
             String cachedToken = configService.selectConfigByKey("wx.access_token");

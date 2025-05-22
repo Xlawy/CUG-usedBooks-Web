@@ -8,6 +8,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import com.ruoyi.common.core.controller.BaseController;
 import com.ruoyi.common.core.domain.AjaxResult;
+import com.ruoyi.common.annotation.Log;
+import com.ruoyi.common.enums.BusinessType;
 import com.ruoyi.system.service.IStatisticsService;
 
 /**
@@ -26,6 +28,7 @@ public class SysStatisticsController extends BaseController
      * 获取所有统计数据
      */
     @PreAuthorize("@ss.hasPermi('system:statistics:list')")
+    @Log(title = "统计数据", businessType = BusinessType.OTHER)
     @GetMapping("/all")
     public AjaxResult getAllStatistics()
     {
@@ -36,6 +39,7 @@ public class SysStatisticsController extends BaseController
      * 获取用户统计数据
      */
     @PreAuthorize("@ss.hasPermi('system:statistics:list')")
+    @Log(title = "用户统计", businessType = BusinessType.OTHER)
     @GetMapping("/users")
     public AjaxResult getUsersStatistics()
     {
@@ -46,6 +50,7 @@ public class SysStatisticsController extends BaseController
      * 获取订单统计数据
      */
     @PreAuthorize("@ss.hasPermi('system:statistics:list')")
+    @Log(title = "订单统计", businessType = BusinessType.OTHER)
     @GetMapping("/orders")
     public AjaxResult getOrdersStatistics()
     {
@@ -56,6 +61,7 @@ public class SysStatisticsController extends BaseController
      * 获取图书统计数据
      */
     @PreAuthorize("@ss.hasPermi('system:statistics:list')")
+    @Log(title = "图书统计", businessType = BusinessType.OTHER)
     @GetMapping("/books")
     public AjaxResult getBooksStatistics()
     {
@@ -66,6 +72,7 @@ public class SysStatisticsController extends BaseController
      * 获取在售图书统计数据
      */
     @PreAuthorize("@ss.hasPermi('system:statistics:list')")
+    @Log(title = "在售图书统计", businessType = BusinessType.OTHER)
     @GetMapping("/publishedBooks")
     public AjaxResult getPublishedBooksStatistics()
     {
@@ -76,6 +83,7 @@ public class SysStatisticsController extends BaseController
      * 获取月度订单统计数据
      */
     @PreAuthorize("@ss.hasPermi('system:statistics:list')")
+    @Log(title = "月度订单统计", businessType = BusinessType.OTHER)
     @GetMapping("/orders/monthly/{yearMonth}")
     public AjaxResult getMonthlyOrdersStats(@PathVariable("yearMonth") String yearMonth)
     {
@@ -86,6 +94,7 @@ public class SysStatisticsController extends BaseController
      * 获取学院图书统计数据
      */
     @PreAuthorize("@ss.hasPermi('system:statistics:list')")
+    @Log(title = "学院图书统计", businessType = BusinessType.OTHER)
     @GetMapping("/books/college")
     public AjaxResult getCollegeBookStats()
     {

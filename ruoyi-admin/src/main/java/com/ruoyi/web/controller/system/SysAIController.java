@@ -39,6 +39,7 @@ public class SysAIController extends BaseController
     /**
      * 获取AI配置
      */
+    @Log(title = "AI配置", businessType = BusinessType.OTHER)
     @GetMapping("/config")
     public AjaxResult getConfig()
     {
@@ -62,6 +63,7 @@ public class SysAIController extends BaseController
     /**
      * 发送消息到AI服务
      */
+    @Log(title = "AI对话", businessType = BusinessType.OTHER)
     @PostMapping("/chat")
     public AjaxResult chat(@RequestBody Map<String, Object> params)
     {
