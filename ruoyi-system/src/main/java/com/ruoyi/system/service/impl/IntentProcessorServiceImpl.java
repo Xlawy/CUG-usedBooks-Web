@@ -1,10 +1,6 @@
 package com.ruoyi.system.service.impl;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 import com.ruoyi.common.constant.CacheConstants;
 import com.ruoyi.common.core.redis.RedisCache;
@@ -123,6 +119,22 @@ public class IntentProcessorServiceImpl implements IIntentProcessorService
         String isbn = (String) parameters.get("isbn");
         String category = (String) parameters.get("category");
 
+        // 处理学院分类
+        Integer collegeId = null;
+        if (StringUtils.isNotEmpty(category)) {
+            Map<String, List<String>> categoryMapping = createCategoryMapping();
+            // 遍历映射查找匹配的学院
+            for (Map.Entry<String, List<String>> entry : categoryMapping.entrySet()) {
+                for (String keyword : entry.getValue()) {
+                    if (category.toLowerCase().contains(keyword.toLowerCase())) {
+                        collegeId = getCollegeIdByName(entry.getKey());
+                        break;
+                    }
+                }
+                if (collegeId != null) break;
+            }
+        }
+
         // 构建云函数查询参数
         Map<String, Object> queryParams = new HashMap<>();
         if (StringUtils.isNotEmpty(bookName)) {
@@ -134,6 +146,10 @@ public class IntentProcessorServiceImpl implements IIntentProcessorService
         if (StringUtils.isNotEmpty(isbn)) {
             queryParams.put("isbn", isbn);
         }
+        if (collegeId != null) {
+            queryParams.put("collegeId", collegeId);
+        }
+
         // 可以添加页码和每页条数
         queryParams.put("pageNum", 1);
         queryParams.put("pageSize", 20);
@@ -151,11 +167,11 @@ public class IntentProcessorServiceImpl implements IIntentProcessorService
             } else if (books != null) {
                 total = books.size();
             }
-            
+
             result.put("success", true);
             result.put("count", total);
             result.put("data", books);
-            
+
             if (books == null || books.isEmpty()) {
                 result.put("message", "未找到符合条件的图书");
             } else {
@@ -165,8 +181,35 @@ public class IntentProcessorServiceImpl implements IIntentProcessorService
             result.put("success", false);
             result.put("message", cloudFunctionResult != null ? cloudFunctionResult.get("message") : "查询图书失败");
         }
-        
+
         return result;
+    }
+
+    /**
+     * 根据学院名称获取ID
+     */
+    private Integer getCollegeIdByName(String collegeName) {
+        switch (collegeName) {
+            case "计算机学院": return 0;
+            case "地信学院": return 1;
+            case "环境学院": return 2;
+            case "经管学院": return 3;
+            case "材化学院": return 4;
+            case "外国语学院": return 5;
+            case "地质学院": return 6;
+            case "珠宝学院": return 7;
+            case "自动化学院": return 8;
+            case "艺媒学院": return 9;
+            case "体育学院": return 10;
+            case "工程学院": return 11;
+            case "机电学院": return 12;
+            case "公管学院": return 13;
+            case "马克思学院": return 14;
+            case "海洋学院": return 15;
+            case "新能源学院": return 16;
+            case "其他学院": return 17;
+            default: return null;
+        }
     }
 
     /**
@@ -175,34 +218,38 @@ public class IntentProcessorServiceImpl implements IIntentProcessorService
     @Override
     public Map<String, Object> processBookInfo(Map<String, Object> parameters)
     {
+        Map<String, Object> result = new HashMap<>();
         String bookName = (String) parameters.get("bookName");
+        String isbn = (String) parameters.get("isbn");
         String field = (String) parameters.get("field");
 
-        Map<String, Object> result = new HashMap<>();
-
-        if (StringUtils.isEmpty(bookName)) {
+        if (StringUtils.isEmpty(bookName) && StringUtils.isEmpty(isbn)) {
             result.put("success", false);
-            result.put("message", "未提供图书名称");
+            result.put("message", "请提供图书名称或ISBN");
             return result;
         }
 
-        // 构建云函数查询参数
+        // 构建查询参数
         Map<String, Object> queryParams = new HashMap<>();
-        queryParams.put("title", bookName);
+        if (StringUtils.isNotEmpty(bookName)) {
+            queryParams.put("title", bookName);
+        }
+        if (StringUtils.isNotEmpty(isbn)) {
+            queryParams.put("isbn", isbn);
+        }
         queryParams.put("pageNum", 1);
-        queryParams.put("pageSize", 1); // 只需要一本匹配的书
+        queryParams.put("pageSize", 1);
 
-        // 调用微信云函数查询图书详情，直接传递查询参数
+        // 调用微信云函数查询图书详情
         Map<String, Object> cloudFunctionResult = invokeCloudFunction("getAllBooks", queryParams);
 
         if (cloudFunctionResult != null && cloudFunctionResult.containsKey("success") && (Boolean) cloudFunctionResult.get("success")) {
-            // 从结果中获取图书信息
             List<Map<String, Object>> books = (List<Map<String, Object>>) cloudFunctionResult.get("data");
             Map<String, Object> bookInfo = books != null && !books.isEmpty() ? books.get(0) : null;
 
             if (bookInfo == null || bookInfo.isEmpty()) {
                 result.put("success", false);
-                result.put("message", String.format("未找到书名包含'%s'的图书", bookName));
+                result.put("message", String.format("未找到相关图书信息"));
                 return result;
             }
 
@@ -211,7 +258,7 @@ public class IntentProcessorServiceImpl implements IIntentProcessorService
                 Object fieldValue = null;
                 String fieldDesc = "";
 
-                switch (field) {
+                switch (field.toLowerCase()) {
                     case "price":
                         fieldValue = bookInfo.get("price");
                         fieldDesc = "价格";
@@ -224,34 +271,64 @@ public class IntentProcessorServiceImpl implements IIntentProcessorService
                         fieldValue = bookInfo.get("publisher");
                         fieldDesc = "出版社";
                         break;
+                    case "author":
+                        fieldValue = bookInfo.get("author");
+                        fieldDesc = "作者";
+                        break;
                     case "isbn":
                         fieldValue = bookInfo.get("isbn");
                         fieldDesc = "ISBN";
                         break;
-                    case "summary":
-                        fieldValue = bookInfo.get("summary");
-                        fieldDesc = "摘要";
+                    case "condition":
+                        fieldValue = bookInfo.get("condition");
+                        fieldDesc = "图书成色";
+                        break;
+                    case "description":
+                        fieldValue = bookInfo.get("description");
+                        fieldDesc = "图书描述";
+                        break;
+                    case "college":
+                        Integer collegeId = (Integer) bookInfo.get("collegeId");
+                        fieldValue = getCollegeNameById(collegeId);
+                        fieldDesc = "所属学院";
                         break;
                     default:
-                        fieldValue = bookInfo.get(field);
-                        fieldDesc = field;
-                        break;
+                        result.put("success", false);
+                        result.put("message", "不支持查询的字段: " + field);
+                        return result;
                 }
 
                 result.put("success", true);
-                result.put("bookName", bookInfo.get("title"));
                 result.put("field", field);
-                result.put("fieldValue", fieldValue);
-                result.put("message", String.format("《%s》的%s是: %s", bookInfo.get("title"), fieldDesc, fieldValue));
+                result.put("fieldDesc", fieldDesc);
+                result.put("value", fieldValue);
+                result.put("message", String.format("《%s》的%s是: %s",
+                    bookInfo.get("title"), fieldDesc, fieldValue));
             } else {
                 // 返回完整的图书信息
                 result.put("success", true);
                 result.put("data", bookInfo);
-                result.put("message", String.format("获取到《%s》的详细信息", bookInfo.get("title")));
+
+                // 添加学院名称
+                Integer collegeId = (Integer) bookInfo.get("collegeId");
+                bookInfo.put("collegeName", getCollegeNameById(collegeId));
+
+                // 格式化消息
+                StringBuilder message = new StringBuilder();
+                message.append(String.format("《%s》的详细信息：\n", bookInfo.get("title")));
+                message.append(String.format("作者：%s\n", bookInfo.get("author")));
+                message.append(String.format("出版社：%s\n", bookInfo.get("publisher")));
+                message.append(String.format("ISBN：%s\n", bookInfo.get("isbn")));
+                message.append(String.format("价格：%.2f元\n", bookInfo.get("price")));
+                message.append(String.format("库存：%d\n", bookInfo.get("stock")));
+                message.append(String.format("成色：%s\n", bookInfo.get("condition")));
+                message.append(String.format("所属学院：%s", bookInfo.get("collegeName")));
+
+                result.put("message", message.toString());
             }
         } else {
             result.put("success", false);
-            result.put("message", cloudFunctionResult != null ? cloudFunctionResult.get("message") : "查询图书详情失败");
+            result.put("message", "获取图书详情失败");
         }
 
         return result;
@@ -263,20 +340,16 @@ public class IntentProcessorServiceImpl implements IIntentProcessorService
     @Override
     public Map<String, Object> processOrderStatus(Map<String, Object> parameters)
     {
+        Map<String, Object> result = new HashMap<>();
         String orderId = (String) parameters.get("orderId");
         String userId = (String) parameters.get("userId");
         String bookName = (String) parameters.get("bookName");
+        String status = (String) parameters.get("status");
+        String timeRange = (String) parameters.get("timeRange");
 
-        Map<String, Object> result = new HashMap<>();
-
-        if (StringUtils.isEmpty(orderId) && StringUtils.isEmpty(userId) && StringUtils.isEmpty(bookName)) {
-            result.put("success", false);
-            result.put("message", "未提供订单号、用户ID或图书名称");
-            return result;
-        }
-
-        // 构建云函数查询参数
+        // 构建查询参数
         Map<String, Object> queryParams = new HashMap<>();
+
         if (StringUtils.isNotEmpty(orderId)) {
             queryParams.put("orderId", orderId);
         }
@@ -284,12 +357,33 @@ public class IntentProcessorServiceImpl implements IIntentProcessorService
             queryParams.put("userId", userId);
         }
         if (StringUtils.isNotEmpty(bookName)) {
-            queryParams.put("title", bookName); // 云函数使用title作为参数名
+            queryParams.put("title", bookName);
         }
+        if (StringUtils.isNotEmpty(status)) {
+            queryParams.put("status", status);
+        }
+        if (StringUtils.isNotEmpty(timeRange)) {
+            // 解析时间范围，格式如：today, week, month, year
+            switch(timeRange.toLowerCase()) {
+                case "today":
+                    queryParams.put("startTime", System.currentTimeMillis() - 24 * 60 * 60 * 1000);
+                    break;
+                case "week":
+                    queryParams.put("startTime", System.currentTimeMillis() - 7 * 24 * 60 * 60 * 1000);
+                    break;
+                case "month":
+                    queryParams.put("startTime", System.currentTimeMillis() - 30L * 24 * 60 * 60 * 1000);
+                    break;
+                case "year":
+                    queryParams.put("startTime", System.currentTimeMillis() - 365L * 24 * 60 * 60 * 1000);
+                    break;
+            }
+        }
+
         queryParams.put("pageNum", 1);
         queryParams.put("pageSize", 10);
 
-        // 调用微信云函数查询订单，直接传递查询参数
+        // 调用微信云函数查询订单
         Map<String, Object> cloudFunctionResult = invokeCloudFunction("getAllOrders", queryParams);
 
         if (cloudFunctionResult != null && cloudFunctionResult.containsKey("success") && (Boolean) cloudFunctionResult.get("success")) {
@@ -303,13 +397,21 @@ public class IntentProcessorServiceImpl implements IIntentProcessorService
 
             if (orders == null || orders.isEmpty()) {
                 result.put("success", false);
-                if (StringUtils.isNotEmpty(orderId)) {
-                    result.put("message", String.format("未找到订单号为'%s'的订单", orderId));
-                } else if (StringUtils.isNotEmpty(bookName)) {
-                    result.put("message", String.format("未找到关于《%s》的订单", bookName));
-                } else {
-                    result.put("message", String.format("未找到用户'%s'的订单", userId));
+                StringBuilder message = new StringBuilder("未找到");
+                if (StringUtils.isNotEmpty(timeRange)) {
+                    message.append(getTimeRangeDesc(timeRange)).append("的");
                 }
+                if (StringUtils.isNotEmpty(orderId)) {
+                    message.append("订单号为'").append(orderId).append("'的");
+                }
+                if (StringUtils.isNotEmpty(bookName)) {
+                    message.append("关于《").append(bookName).append("》的");
+                }
+                if (StringUtils.isNotEmpty(status)) {
+                    message.append(getStatusDesc(status)).append("的");
+                }
+                message.append("订单");
+                result.put("message", message.toString());
                 return result;
             }
 
@@ -317,20 +419,93 @@ public class IntentProcessorServiceImpl implements IIntentProcessorService
             result.put("data", orders);
             result.put("count", total);
 
+            // 构建返回消息
+            StringBuilder message = new StringBuilder();
             if (StringUtils.isNotEmpty(orderId)) {
                 Map<String, Object> orderInfo = orders.get(0);
-                result.put("message", String.format("订单%s的状态是: %s", orderId, orderInfo.get("status")));
-            } else if (StringUtils.isNotEmpty(bookName)) {
-                result.put("message", String.format("找到%d个关于《%s》的订单", total, bookName));
+                message.append(String.format("订单%s的状态是: %s", orderId, getStatusDesc((String)orderInfo.get("status"))));
+                // 添加订单详细信息
+                message.append("\n订单信息：");
+                message.append(String.format("\n创建时间：%s", orderInfo.get("createTime")));
+                message.append(String.format("\n更新时间：%s", orderInfo.get("updateTime")));
+                message.append(String.format("\n订单金额：%.2f元", orderInfo.get("totalAmount")));
+                if (orderInfo.get("payTime") != null) {
+                    message.append(String.format("\n支付时间：%s", orderInfo.get("payTime")));
+                }
             } else {
-                result.put("message", String.format("用户%s有%d个订单", userId, total));
+                message.append("找到");
+                if (StringUtils.isNotEmpty(timeRange)) {
+                    message.append(getTimeRangeDesc(timeRange));
+                }
+                if (StringUtils.isNotEmpty(status)) {
+                    message.append(getStatusDesc(status));
+                }
+                if (StringUtils.isNotEmpty(bookName)) {
+                    message.append(String.format("关于《%s》的", bookName));
+                }
+                message.append(String.format("%d个订单", total));
+
+                // 添加订单状态统计
+                Map<String, Integer> statusCount = new HashMap<>();
+                for (Map<String, Object> order : orders) {
+                    String orderStatus = (String) order.get("status");
+                    statusCount.put(orderStatus, statusCount.getOrDefault(orderStatus, 0) + 1);
+                }
+                message.append("\n订单状态统计：");
+                for (Map.Entry<String, Integer> entry : statusCount.entrySet()) {
+                    message.append(String.format("\n%s：%d个", getStatusDesc(entry.getKey()), entry.getValue()));
+                }
             }
+
+            result.put("message", message.toString());
         } else {
             result.put("success", false);
-            result.put("message", cloudFunctionResult != null ? cloudFunctionResult.get("message") : "查询订单状态失败");
+            result.put("message", "获取订单状态失败");
         }
 
         return result;
+    }
+
+    /**
+     * 获取订单状态描述
+     */
+    private String getStatusDesc(String status) {
+        switch (status.toLowerCase()) {
+            case "pending":
+                return "待支付";
+            case "paid":
+                return "已支付";
+            case "shipping":
+                return "配送中";
+            case "completed":
+                return "已完成";
+            case "cancelled":
+                return "已取消";
+            case "refunding":
+                return "退款中";
+            case "refunded":
+                return "已退款";
+            default:
+                return status;
+        }
+    }
+
+    /**
+     * 获取时间范围描述
+     */
+    private String getTimeRangeDesc(String timeRange) {
+        switch (timeRange.toLowerCase()) {
+            case "today":
+                return "今天";
+            case "week":
+                return "本周";
+            case "month":
+                return "本月";
+            case "year":
+                return "今年";
+            default:
+                return timeRange;
+        }
     }
 
     /**
@@ -339,174 +514,148 @@ public class IntentProcessorServiceImpl implements IIntentProcessorService
     @Override
     public Map<String, Object> processBookRecommendation(Map<String, Object> parameters)
     {
-        String category = (String) parameters.get("category");
-        Boolean smartRecommend = (Boolean) parameters.get("smartRecommend");
-        Integer collegeId = parameters.get("collegeId") instanceof Number ?
-                            ((Number) parameters.get("collegeId")).intValue() : null;
-        Integer kindId = parameters.get("kindId") instanceof Number ?
-                        ((Number) parameters.get("kindId")).intValue() : null;
-
         Map<String, Object> result = new HashMap<>();
+        String category = (String) parameters.get("category");
+        String userId = (String) parameters.get("userId");
+        String recommendType = (String) parameters.get("type"); // hot, new, similar
+        Integer collegeId = null;
 
-        // 获取所有图书数据
-        Map<String, Object> booksResult = invokeCloudFunction("getAllBooks", new HashMap<>());
-        List<Map<String, Object>> allBooks = null;
+        // 获取所有图书
+        Map<String, Object> queryParams = new HashMap<>();
+        queryParams.put("pageNum", 1);
+        queryParams.put("pageSize", 50); // 获取足够多的图书用于推荐
 
-        if (booksResult != null && booksResult.containsKey("success") && (Boolean) booksResult.get("success")) {
-            allBooks = (List<Map<String, Object>>) booksResult.get("data");
+        // 处理学院分类
+        if (StringUtils.isNotEmpty(category)) {
+            // 尝试从类别映射中找到对应的学院
+            Map<String, List<String>> categoryMapping = createCategoryMapping();
+            for (Map.Entry<String, List<String>> entry : categoryMapping.entrySet()) {
+                for (String keyword : entry.getValue()) {
+                    if (category.toLowerCase().contains(keyword.toLowerCase())) {
+                        collegeId = getCollegeIdByName(entry.getKey());
+                        break;
+                    }
+                }
+                if (collegeId != null) break;
+            }
+
+            if (collegeId != null) {
+                queryParams.put("collegeId", collegeId);
+            }
         }
 
-        if (allBooks == null || allBooks.isEmpty()) {
-            result.put("success", false);
-            result.put("message", "没有可用的图书数据");
-            return result;
-        }
+        // 调用微信云函数获取图书列表
+        Map<String, Object> cloudFunctionResult = invokeCloudFunction("getAllBooks", queryParams);
 
-        // 现在我们有所有图书数据，开始进行推荐
-        List<Map<String, Object>> recommendedBooks = new ArrayList<>();
+        if (cloudFunctionResult != null && cloudFunctionResult.containsKey("success") && (Boolean) cloudFunctionResult.get("success")) {
+            List<Map<String, Object>> allBooks = (List<Map<String, Object>>) cloudFunctionResult.get("data");
 
-        // 处理"all"类别为获取全部图书
-        if ("all".equalsIgnoreCase(category)) {
+            if (allBooks == null || allBooks.isEmpty()) {
+                result.put("success", false);
+                result.put("message", "暂无可推荐的图书");
+                return result;
+            }
+
+            List<Map<String, Object>> recommendedBooks = new ArrayList<>();
+            String recommendReason = "为您推荐";
+
+            // 根据推荐类型进行筛选
+            if ("hot".equalsIgnoreCase(recommendType)) {
+                // 按销量排序
+                allBooks.sort((a, b) -> {
+                    Integer salesA = (Integer) a.getOrDefault("sales", 0);
+                    Integer salesB = (Integer) b.getOrDefault("sales", 0);
+                    return salesB.compareTo(salesA);
+                });
+                recommendedBooks = allBooks.subList(0, Math.min(5, allBooks.size()));
+                recommendReason = "热门图书推荐";
+            } else if ("new".equalsIgnoreCase(recommendType)) {
+                // 按上架时间排序
+                allBooks.sort((a, b) -> {
+                    Long timeA = (Long) a.getOrDefault("createTime", 0L);
+                    Long timeB = (Long) b.getOrDefault("createTime", 0L);
+                    return timeB.compareTo(timeA);
+                });
+                recommendedBooks = allBooks.subList(0, Math.min(5, allBooks.size()));
+                recommendReason = "新上架图书推荐";
+            } else if ("similar".equalsIgnoreCase(recommendType) && StringUtils.isNotEmpty(userId)) {
+                // 基于用户历史订单推荐相似图书
+                Map<String, Object> orderParams = new HashMap<>();
+                orderParams.put("userId", userId);
+                Map<String, Object> orderResult = invokeCloudFunction("getAllOrders", orderParams);
+
+                if (orderResult != null && orderResult.containsKey("success") &&
+                    (Boolean) orderResult.get("success")) {
+                    List<Map<String, Object>> userOrders = (List<Map<String, Object>>) orderResult.get("data");
+
+                    if (userOrders != null && !userOrders.isEmpty()) {
+                        // 获取用户购买过的图书类别
+                        Set<Integer> userCollegeIds = new HashSet<>();
+                        for (Map<String, Object> order : userOrders) {
+                            Map<String, Object> book = (Map<String, Object>) order.get("book");
+                            if (book != null && book.containsKey("collegeId")) {
+                                userCollegeIds.add((Integer) book.get("collegeId"));
+                            }
+                        }
+
+                        // 推荐相同类别的其他图书
+                        for (Map<String, Object> book : allBooks) {
+                            Integer bookCollegeId = (Integer) book.get("collegeId");
+                            if (bookCollegeId != null && userCollegeIds.contains(bookCollegeId)) {
+                                recommendedBooks.add(book);
+                                if (recommendedBooks.size() >= 5) break;
+                            }
+                        }
+                        recommendReason = "基于您的购买历史推荐";
+                    }
+                }
+
+                // 如果没有找到相似图书，返回热门图书
+                if (recommendedBooks.isEmpty()) {
+                    allBooks.sort((a, b) -> {
+                        Integer salesA = (Integer) a.getOrDefault("sales", 0);
+                        Integer salesB = (Integer) b.getOrDefault("sales", 0);
+                        return salesB.compareTo(salesA);
+                    });
+                    recommendedBooks = allBooks.subList(0, Math.min(5, allBooks.size()));
+                    recommendReason = "热门图书推荐";
+                }
+            } else {
+                // 默认推荐
+                recommendedBooks = allBooks.subList(0, Math.min(5, allBooks.size()));
+                recommendReason = "为您推荐";
+            }
+
+            // 构建推荐结果
             result.put("success", true);
-            result.put("count", allBooks.size());
-            result.put("data", allBooks);
-            result.put("message", String.format("为您展示平台上的所有%d本图书", allBooks.size()));
-            return result;
-        }
+            result.put("data", recommendedBooks);
+            result.put("count", recommendedBooks.size());
 
-        // 根据分类过滤图书
-        if (allBooks != null && !allBooks.isEmpty()) {
-            // 按collegeId和kindId过滤（专业和通用类别）
-            if (collegeId != null || kindId != null) {
-                for (Map<String, Object> book : allBooks) {
-                    boolean matches = true;
-
-                    // 按collegeId过滤
-                    if (collegeId != null) {
-                        Object bookCollegeId = book.get("collegeId");
-                        if (bookCollegeId == null ||
-                            !Integer.valueOf(collegeId).equals(
-                                bookCollegeId instanceof Number ?
-                                ((Number) bookCollegeId).intValue() : null)) {
-                            matches = false;
-                        }
-                    }
-
-                    // 按kindId过滤
-                    if (matches && kindId != null) {
-                        Object bookKindId = book.get("kindId");
-                        if (bookKindId == null ||
-                            !Integer.valueOf(kindId).equals(
-                                bookKindId instanceof Number ?
-                                ((Number) bookKindId).intValue() : null)) {
-                            matches = false;
-                        }
-                    }
-
-                    if (matches) {
-                        recommendedBooks.add(book);
-                    }
+            // 构建推荐消息
+            StringBuilder message = new StringBuilder();
+            message.append(recommendReason).append("：\n");
+            for (int i = 0; i < recommendedBooks.size(); i++) {
+                Map<String, Object> book = recommendedBooks.get(i);
+                message.append(String.format("%d. 《%s》 - %s\n",
+                    i + 1,
+                    book.get("title"),
+                    book.get("author")));
+                message.append(String.format("   价格：%s元", book.get("price")));
+                if (book.containsKey("sales")) {
+                    message.append(String.format(" | 已售：%d本", book.get("sales")));
                 }
-            } else if (StringUtils.isNotEmpty(category)) {
-                // 首先按分类过滤
-                // 创建类别映射，支持多样化的用户输入
-                Map<String, List<String>> categoryMapping = createCategoryMapping();
-
-                // 获取匹配的类别关键词
-                List<String> matchingKeywords = new ArrayList<>();
-                for (Map.Entry<String, List<String>> entry : categoryMapping.entrySet()) {
-                    for (String keyword : entry.getValue()) {
-                        if (category.toLowerCase().contains(keyword.toLowerCase())) {
-                            matchingKeywords.addAll(entry.getValue());
-                            break;
-                        }
-                    }
-                }
-
-                // 使用关键词过滤
-                if (!matchingKeywords.isEmpty()) {
-                    for (Map<String, Object> book : allBooks) {
-                        String bookCategory = (String) book.get("category");
-                        String bookTitle = (String) book.get("title");
-                        String bookDescription = (String) book.get("description");
-
-                        boolean matched = false;
-
-                        // 根据分类匹配
-                        if (bookCategory != null) {
-                            for (String keyword : matchingKeywords) {
-                                if (bookCategory.toLowerCase().contains(keyword.toLowerCase())) {
-                                    matched = true;
-                                    break;
-                                }
-                            }
-                        }
-
-                        // 如果分类没匹配上，尝试从标题和描述中匹配
-                        if (!matched) {
-                            for (String keyword : matchingKeywords) {
-                                if ((bookTitle != null && bookTitle.toLowerCase().contains(keyword.toLowerCase())) ||
-                                    (bookDescription != null && bookDescription.toLowerCase().contains(keyword.toLowerCase()))) {
-                                    matched = true;
-                                    break;
-                                }
-                            }
-                        }
-
-                        if (matched) {
-                            recommendedBooks.add(book);
-                        }
-                    }
-                } else {
-                    // 如果没有匹配的映射类别，直接用原始类别搜索
-                    for (Map<String, Object> book : allBooks) {
-                        String bookCategory = (String) book.get("category");
-                        if (bookCategory != null && bookCategory.toLowerCase().contains(category.toLowerCase())) {
-                            recommendedBooks.add(book);
-                        }
-                    }
-                }
-            } else {
-                // 如果没有指定分类，复制所有图书
-                recommendedBooks.addAll(allBooks);
+                message.append("\n");
             }
 
-            // 如果结果较多，随机选择最多5本
-            if (recommendedBooks.size() > 5) {
-                List<Map<String, Object>> selectedBooks = new ArrayList<>();
-                // 使用简单随机选择
-                java.util.Random random = new java.util.Random();
-                for (int i = 0; i < 5; i++) {
-                    int randomIndex = random.nextInt(recommendedBooks.size());
-                    selectedBooks.add(recommendedBooks.get(randomIndex));
-                    recommendedBooks.remove(randomIndex); // 避免重复选择
-                }
-                recommendedBooks = selectedBooks;
-            }
-        }
-
-        result.put("success", true);
-        result.put("count", recommendedBooks.size());
-        result.put("data", recommendedBooks);
-
-        if (recommendedBooks.isEmpty()) {
+            // 添加分类信息
             if (collegeId != null) {
-                String collegeName = getCollegeNameById(collegeId);
-                result.put("message", String.format("没有找到%s学院的图书推荐", collegeName));
-            } else if (StringUtils.isNotEmpty(category)) {
-                result.put("message", String.format("没有找到%s类别的图书推荐", category));
-            } else {
-                result.put("message", "没有找到推荐图书");
+                message.append(String.format("\n以上图书均来自%s", getCollegeNameById(collegeId)));
             }
+
+            result.put("message", message.toString());
         } else {
-            if (collegeId != null) {
-                String collegeName = getCollegeNameById(collegeId);
-                result.put("message", String.format("为您推荐%d本%s学院的图书", recommendedBooks.size(), collegeName));
-            } else if (StringUtils.isNotEmpty(category)) {
-                result.put("message", String.format("为您推荐%d本%s类别的图书", recommendedBooks.size(), category));
-            } else {
-                result.put("message", "为您推荐以下图书");
-            }
+            result.put("success", false);
+            result.put("message", "获取推荐图书失败");
         }
 
         return result;
@@ -590,8 +739,8 @@ public class IntentProcessorServiceImpl implements IIntentProcessorService
         String author = (String) parameters.get("author");
         String isbn = (String) parameters.get("isbn");
         String category = (String) parameters.get("category");
-        boolean listAll = bookName == null && author == null && isbn == null && 
-                         (parameters.containsKey("listAll") || 
+        boolean listAll = bookName == null && author == null && isbn == null &&
+                         (parameters.containsKey("listAll") ||
                           Boolean.TRUE.equals(parameters.get("listAll")));
 
         // 构建云函数查询参数
@@ -621,11 +770,11 @@ public class IntentProcessorServiceImpl implements IIntentProcessorService
             } else if (books != null) {
                 total = books.size();
             }
-            
+
             result.put("success", true);
             result.put("count", total);
             result.put("data", books);
-            
+
             if (books == null || books.isEmpty()) {
                 result.put("message", "未找到符合条件的在售图书");
             } else {
@@ -635,7 +784,7 @@ public class IntentProcessorServiceImpl implements IIntentProcessorService
             result.put("success", false);
             result.put("message", cloudFunctionResult != null ? cloudFunctionResult.get("message") : "查询在售图书失败");
         }
-        
+
         return result;
     }
 
@@ -662,12 +811,12 @@ public class IntentProcessorServiceImpl implements IIntentProcessorService
                 if (usersResult != null && usersResult.containsKey("success") && (Boolean) usersResult.get("success")) {
                     List<Map<String, Object>> users = (List<Map<String, Object>>) usersResult.get("data");
                     int userCount = users != null ? users.size() : 0;
-                    
+
                     // 从total字段获取总数，如果存在
                     if (usersResult.containsKey("total")) {
                         userCount = ((Number) usersResult.get("total")).intValue();
                     }
-                    
+
                     result.put("success", true);
                     result.put("statType", "users");
                     result.put("count", userCount);
@@ -684,18 +833,18 @@ public class IntentProcessorServiceImpl implements IIntentProcessorService
                 if (ordersResult != null && ordersResult.containsKey("success") && (Boolean) ordersResult.get("success")) {
                     List<Map<String, Object>> orders = (List<Map<String, Object>>) ordersResult.get("data");
                     int orderCount = orders != null ? orders.size() : 0;
-                    
+
                     // 从total字段获取总数，如果存在
                     if (ordersResult.containsKey("total")) {
                         orderCount = ((Number) ordersResult.get("total")).intValue();
                     }
-                    
+
                     // 如果指定了时间范围，进行过滤
                     if (StringUtils.isNotEmpty(timeRange)) {
                         // 简单实现，实际应该根据具体的时间范围格式进行解析
                         result.put("timeRange", timeRange);
                     }
-                    
+
                     result.put("success", true);
                     result.put("statType", "orders");
                     result.put("count", orderCount);
@@ -705,19 +854,19 @@ public class IntentProcessorServiceImpl implements IIntentProcessorService
                     result.put("message", "获取订单统计信息失败");
                 }
                 break;
-                
+
             case "books":
                 // 获取图书统计
                 Map<String, Object> booksResult = invokeCloudFunction("getAllBooks", new HashMap<>());
                 if (booksResult != null && booksResult.containsKey("success") && (Boolean) booksResult.get("success")) {
                     List<Map<String, Object>> books = (List<Map<String, Object>>) booksResult.get("data");
                     int bookCount = books != null ? books.size() : 0;
-                    
+
                     // 从total字段获取总数，如果存在
                     if (booksResult.containsKey("total")) {
                         bookCount = ((Number) booksResult.get("total")).intValue();
                     }
-                    
+
                     result.put("success", true);
                     result.put("statType", "books");
                     result.put("count", bookCount);
@@ -727,19 +876,19 @@ public class IntentProcessorServiceImpl implements IIntentProcessorService
                     result.put("message", "获取图书统计信息失败");
                 }
                 break;
-                
+
             case "publishedBooks":
                 // 获取发布图书统计
                 Map<String, Object> publishedBooksResult = invokeCloudFunction("getAllPublishedBooks", new HashMap<>());
                 if (publishedBooksResult != null && publishedBooksResult.containsKey("success") && (Boolean) publishedBooksResult.get("success")) {
                     List<Map<String, Object>> publishedBooks = (List<Map<String, Object>>) publishedBooksResult.get("data");
                     int publishedBookCount = publishedBooks != null ? publishedBooks.size() : 0;
-                    
+
                     // 从total字段获取总数，如果存在
                     if (publishedBooksResult.containsKey("total")) {
                         publishedBookCount = ((Number) publishedBooksResult.get("total")).intValue();
                     }
-                    
+
                     result.put("success", true);
                     result.put("statType", "publishedBooks");
                     result.put("count", publishedBookCount);
@@ -806,7 +955,7 @@ public class IntentProcessorServiceImpl implements IIntentProcessorService
     private Map<String, Object> invokeCloudFunction(String functionName, Map<String, Object> params) {
         Map<String, Object> result = null;
         Exception exception = null;
-        
+
         try {
             // 检查云函数名称是否在可用的云函数列表中
             List<String> availableFunctions = List.of(
@@ -894,7 +1043,7 @@ public class IntentProcessorServiceImpl implements IIntentProcessorService
                             responseBody = responseEntity.getBody();
                             responseJson = JSON.parseObject(responseBody);
                             log.info("使用新token重试，响应: {}", responseBody);
-                            
+
                             if (responseJson.getIntValue("errcode") == 0) {
                                 String respData = responseJson.getString("resp_data");
                                 result = JSON.parseObject(respData, Map.class);
@@ -941,7 +1090,7 @@ public class IntentProcessorServiceImpl implements IIntentProcessorService
             // 记录操作日志
             com.ruoyi.system.utils.CloudFunctionLogUtils.recordCloudFunctionLog(functionName, params, result, exception);
         }
-        
+
         return result;
     }
 

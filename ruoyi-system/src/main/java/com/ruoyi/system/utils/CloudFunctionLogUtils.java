@@ -71,7 +71,12 @@ public class CloudFunctionLogUtils
             // 返回参数
             if (result != null)
             {
-                operLog.setJsonResult(result.toString());
+                String jsonResult = result.toString();
+                // 如果结果超过3000字符，进行截断
+                if (jsonResult.length() > 3000) {
+                    jsonResult = jsonResult.substring(0, 3000) + "...(已截断)";
+                }
+                operLog.setJsonResult(jsonResult);
             }
 
             // 设置操作状态
