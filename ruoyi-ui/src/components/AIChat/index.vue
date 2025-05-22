@@ -17,6 +17,60 @@
           <div class="message-content">
             <div v-if="message.isUser || !message.intentData" class="message-text" v-html="formatMessage(message.content)"></div>
             
+            <!-- 示例问题列表 -->
+            <div v-if="message.showExamples" class="helpful-message">
+              <div class="examples-header">
+                <i class="el-icon-magic-stick"></i>
+                <span>您可以这样问我</span>
+              </div>
+              <div class="example-list">
+                <div class="example-item" @click="useExampleQuery('请帮我查询作者是马克思的书籍')">
+                  <div class="item-icon">
+                    <i class="el-icon-search"></i>
+                  </div>
+                  <div class="item-content">
+                    <div class="item-text">"请帮我查询作者是马克思的书籍"</div>
+                  </div>
+                  <div class="item-arrow">
+                    <i class="el-icon-arrow-right"></i>
+                  </div>
+                </div>
+                <div class="example-item" @click="useExampleQuery('有没有ISBN为9787111213826的书？')">
+                  <div class="item-icon">
+                    <i class="el-icon-document"></i>
+                  </div>
+                  <div class="item-content">
+                    <div class="item-text">"有没有ISBN为9787111213826的书？"</div>
+                  </div>
+                  <div class="item-arrow">
+                    <i class="el-icon-arrow-right"></i>
+                  </div>
+                </div>
+                <div class="example-item" @click="useExampleQuery('我想看看有什么畅销书推荐')">
+                  <div class="item-icon">
+                    <i class="el-icon-star-on"></i>
+                  </div>
+                  <div class="item-content">
+                    <div class="item-text">"我想看看有什么畅销书推荐"</div>
+                  </div>
+                  <div class="item-arrow">
+                    <i class="el-icon-arrow-right"></i>
+                  </div>
+                </div>
+                <div class="example-item" @click="useExampleQuery('系统中有多少在售图书？')">
+                  <div class="item-icon">
+                    <i class="el-icon-data-line"></i>
+                  </div>
+                  <div class="item-content">
+                    <div class="item-text">"系统中有多少在售图书？"</div>
+                  </div>
+                  <div class="item-arrow">
+                    <i class="el-icon-arrow-right"></i>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
             <!-- 意图识别结果 -->
             <div v-else-if="message.intentData && !message.queryResult" class="intent-data">
               <!-- <div class="intent-type">
@@ -65,22 +119,21 @@
                 <!-- 图书详情结果 -->
                 <div v-else-if="message.intentData.intent === 'book_info'" class="book-info">
                   <div v-if="message.queryResult.field" class="single-field">
-                    <span class="field-name">{{ formatParamName(message.queryResult.field) }}:</span>
-                    <span class="field-value">{{ message.queryResult.fieldValue }}</span>
+                    <span class="field-name">{{ formatParamName(message.queryResult.field) }}</span>
+                    <span class="field-value">{{ message.queryResult.value }}</span>
                   </div>
-                  <div v-else-if="message.queryResult.data" class="full-book-info">
-                    <div class="book-info-row"><span class="info-label">书名:</span> {{ message.queryResult.data.title }}</div>
-                    <div class="book-info-row"><span class="info-label">作者:</span> {{ message.queryResult.data.author }}</div>
-                    <div class="book-info-row"><span class="info-label">出版社:</span> {{ message.queryResult.data.publisher }}</div>
-                    <div class="book-info-row"><span class="info-label">价格:</span> ¥{{ message.queryResult.data.price }}</div>
-                    <div class="book-info-row"><span class="info-label">ISBN:</span> {{ message.queryResult.data.isbn }}</div>
-                    <div v-if="message.queryResult.data.summary" class="book-summary">
-                      <div class="summary-title">图书摘要:</div>
-                      <div class="summary-content">{{ message.queryResult.data.summary }}</div>
+                  <div v-else-if="message.queryResult.data" class="book-simple-card" @click="showBookDetail(message.queryResult.data)">
+                    <div class="book-cover">
+                      <img :src="getBookCoverUrl(message.queryResult.data)" alt="封面" class="cover-image">
+                      <div class="book-price-tag">¥{{ message.queryResult.data.price }}</div>
                     </div>
-                    <div v-if="message.queryResult.data.aiDescription" class="book-ai-description">
-                      <div class="ai-description-title">AI智能介绍:</div>
-                      <div class="ai-description-content" v-html="formatMultiLineText(message.queryResult.data.aiDescription)"></div>
+                    <div class="book-brief">
+                      <div class="book-title">{{ message.queryResult.data.title }}</div>
+                      <div class="book-author">{{ message.queryResult.data.author }}</div>
+                    </div>
+                    <div class="click-hint">
+                      <i class="el-icon-view"></i>
+                      <span>点击查看详情</span>
                     </div>
                   </div>
                 </div>
@@ -114,23 +167,26 @@
                 
                 <!-- 图书推荐结果 -->
                 <div v-else-if="message.intentData.intent === 'book_recommendation'" class="book-recommendation">
-                  <div v-if="message.queryResult.data && message.queryResult.data.length > 0" class="recommended-books-horizontal">
-                    <div class="books-scroll-container">
-                      <div 
-                        v-for="book in message.queryResult.data" 
-                        :key="book.id" 
-                        class="book-card"
-                        @click="showBookDetail(book)">
-                        <div class="book-cover">
-                          <img :src="getBookCoverUrl(book)" alt="封面" class="cover-image">
+                  <div v-if="message.queryResult.data && message.queryResult.data.length > 0" class="recommended-books">
+
+                    <el-carousel 
+                      :interval="4000" 
+                      type="card" 
+                      height="240px"
+                      :autoplay="true"
+                      indicator-position="outside"
+                      arrow="always">
+                      <el-carousel-item v-for="book in message.queryResult.data" :key="book.id">
+                        <div class="carousel-book-card" @click="showBookDetail(book)">
+                          <div class="carousel-book-cover">
+                            <img :src="getBookCoverUrl(book)" alt="封面" class="cover-image">
+                          </div>
+                          <div class="carousel-book-info">
+                            <h3 class="carousel-book-title">{{ book.title }}</h3>
+                          </div>
                         </div>
-                        <div class="book-info">
-                          <h4 class="book-title">{{ book.title }}</h4>
-                          <div class="book-author">{{ book.author }}</div>
-                          <div class="book-price">¥{{ book.price }}</div>
-                        </div>
-                      </div>
-                    </div>
+                      </el-carousel-item>
+                    </el-carousel>
                   </div>
                 </div>
                 
@@ -219,53 +275,100 @@
         ></el-input>
         <el-button type="primary" icon="el-icon-s-promotion" @click="sendMessage" :loading="isLoading">发送</el-button>
       </div>
-      
-      <div class="chat-help">
-        <p class="help-title">你可以询问这些问题：</p>
-        <ul class="help-examples">
-          <li>《Java编程思想》这本书有库存吗？</li>
-          <li>查询订单号12345的状态</li>
-          <li>推荐几本计算机类的书籍</li>
-          <li>《时间简史》的价格是多少？</li>
-        </ul>
-    </div>
     </div>
 
     <!-- 图书详情弹窗 -->
     <el-dialog
       title="图书详情"
       :visible.sync="bookDetailVisible"
-      width="500px"
+      width="600px"
       :before-close="closeBookDetail"
+      class="book-detail-dialog"
       append-to-body
-      center
-    >
-      <div v-if="currentBook" class="book-detail-dialog">
-        <div class="book-detail-header">
-          <div class="book-detail-cover">
-            <img :src="getBookCoverUrl(currentBook)" alt="封面" class="detail-cover-image">
+      center>
+      <div v-if="currentBook" class="book-detail-content">
+        <div class="book-info-header">
+          <div class="book-cover">
+            <img :src="getBookCoverUrl(currentBook)" alt="封面" class="cover-image">
+            <div class="book-price-tag">¥{{ currentBook.price }}</div>
           </div>
-          <div class="book-detail-info">
-            <h3 class="detail-book-title">{{ currentBook.title }}</h3>
-            <div class="detail-info-row"><span class="detail-label">作者:</span> {{ currentBook.author }}</div>
-            <div class="detail-info-row"><span class="detail-label">类别:</span> {{ currentBook.category }}</div>
-            <div class="detail-info-row"><span class="detail-label">价格:</span> ¥{{ currentBook.price }}</div>
-            <div class="detail-info-row"><span class="detail-label">ISBN:</span> {{ currentBook.isbn }}</div>
-            <div class="detail-info-row"><span class="detail-label">出版社:</span> {{ currentBook.publisher }}</div>
+          <div class="book-basic-info">
+            <h3 class="book-title">{{ currentBook.title }}</h3>
+            <div class="book-meta">
+              <div class="meta-item">
+                <i class="el-icon-user"></i>
+                <span>{{ currentBook.author }}</span>
+              </div>
+              <div class="meta-item">
+                <i class="el-icon-office-building"></i>
+                <span>{{ currentBook.publisher }}</span>
+              </div>
+              <div class="meta-item">
+                <i class="el-icon-document"></i>
+                <span>{{ currentBook.isbn }}</span>
+              </div>
+              <div class="meta-item" v-if="currentBook.pubdate">
+                <i class="el-icon-date"></i>
+                <span>{{ currentBook.pubdate }}</span>
+              </div>
+            </div>
           </div>
         </div>
-        <div class="book-detail-description">
-          <div class="description-title">图书简介:</div>
-          <div class="description-content">{{ currentBook.description }}</div>
+        <div v-if="currentBookRecommendReason" class="book-recommend-reason">
+          <div class="reason-title">
+            <i class="el-icon-star-on"></i>
+            推荐理由
+          </div>
+          <div class="reason-content">{{ currentBookRecommendReason }}</div>
         </div>
-        <div v-if="currentBook.summary" class="book-detail-summary">
-          <div class="summary-title">摘要:</div>
+        <div class="book-details">
+          <el-row :gutter="20">
+            <el-col :span="8">
+              <div class="detail-item">
+                <div class="detail-label">装帧</div>
+                <div class="detail-value">{{ currentBook.binding || '平装' }}</div>
+              </div>
+            </el-col>
+            <el-col :span="8">
+              <div class="detail-item">
+                <div class="detail-label">页数</div>
+                <div class="detail-value">{{ currentBook.page || '未知' }} 页</div>
+              </div>
+            </el-col>
+            <el-col :span="8">
+              <div class="detail-item">
+                <div class="detail-label">库存</div>
+                <div class="detail-value">{{ currentBook.stock || 0 }} 本</div>
+              </div>
+            </el-col>
+          </el-row>
+        </div>
+        <div v-if="currentBook.summary" class="book-summary">
+          <div class="summary-title">
+            <i class="el-icon-reading"></i>
+            图书简介
+          </div>
           <div class="summary-content">{{ currentBook.summary }}</div>
+        </div>
+        <div class="book-tags" v-if="currentBook.keyword">
+          <div class="tags-title">
+            <i class="el-icon-collection-tag"></i>
+            图书标签
+          </div>
+          <div class="tags-content">
+            <el-tag 
+              v-for="(tag, index) in currentBook.keyword.split('－')" 
+              :key="index"
+              size="small"
+              effect="light"
+              class="book-tag">
+              {{ tag }}
+            </el-tag>
+          </div>
         </div>
       </div>
       <span slot="footer" class="dialog-footer">
         <el-button @click="closeBookDetail">关闭</el-button>
-        <el-button type="primary" @click="closeBookDetail">确定</el-button>
       </span>
     </el-dialog>
   </div>
@@ -294,6 +397,17 @@ export default {
           isUser: false,
           time: this.getCurrentTime(),
           intentData: null
+        },
+        {
+          content: '您可以这样问我：',
+          isUser: false,
+          time: this.getCurrentTime(),
+          intentData: {
+            intent: 'unknown',
+            parameters: {}
+          },
+          queryResult: null,
+          showExamples: true
         }
       ],
       // 拖动相关数据
@@ -341,6 +455,7 @@ export default {
       // 图书详情弹窗
       bookDetailVisible: false,
       currentBook: null,
+      currentBookRecommendReason: '', // 添加当前图书的推荐理由
     }
   },
   computed: {
@@ -732,11 +847,43 @@ export default {
     },
     showBookDetail(book) {
       this.currentBook = book;
+      // 从推荐理由中提取当前图书的推荐理由
+      const recommendReason = this.getCurrentMessageRecommendReason();
+      if (recommendReason) {
+        const lines = recommendReason.split('\n');
+        let bookReason = '';
+        let isCurrentBook = false;
+        
+        for (const line of lines) {
+          if (line.includes(`《${book.title}》`)) {
+            isCurrentBook = true;
+            continue;
+          }
+          if (isCurrentBook && line.trim() && !line.startsWith('《')) {
+            bookReason = line.trim();
+            break;
+          }
+        }
+        this.currentBookRecommendReason = bookReason;
+      }
       this.bookDetailVisible = true;
     },
     closeBookDetail() {
       this.bookDetailVisible = false;
       this.currentBook = null;
+      this.currentBookRecommendReason = '';
+    },
+    getCurrentMessageRecommendReason() {
+      // 获取当前消息的推荐理由
+      const currentMessage = this.messages[this.messages.length - 1];
+      if (currentMessage && 
+          currentMessage.intentData && 
+          currentMessage.intentData.intent === 'book_recommendation' && 
+          currentMessage.queryResult && 
+          currentMessage.queryResult.recommendReason) {
+        return currentMessage.queryResult.recommendReason;
+      }
+      return '';
     },
     getBookCoverUrl(book) {
       if (!book) return require('@/assets/images/default-cover.png');
@@ -754,6 +901,22 @@ export default {
     },
     useExampleQuery(query) {
       this.inputMessage = query;
+    },
+    isJsonString(str) {
+      try {
+        JSON.parse(str);
+        return true;
+      } catch (e) {
+        return false;
+      }
+    },
+    parseRecommendReason(reason) {
+      try {
+        return JSON.parse(reason);
+      } catch (e) {
+        console.error('解析推荐理由失败:', e);
+        return [];
+      }
     }
   }
 }
@@ -1177,280 +1340,406 @@ export default {
   padding: 10px;
 }
 
-.recommended-books-horizontal {
-  padding: 10px;
+.recommended-books {
+  padding: 15px;
+  
+  .recommendation-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 15px;
+    
+    i {
+      color: #f56c6c;
+      margin-right: 8px;
+      font-size: 18px;
+    }
+    
+    span {
+      font-size: 16px;
+      font-weight: 500;
+      color: #303133;
+    }
+  }
 }
 
-.books-scroll-container {
+.carousel-book-card {
+  height: 100%;
   display: flex;
-  overflow-x: auto;
-  padding: 10px 0;
-  scroll-behavior: smooth;
-  -webkit-overflow-scrolling: touch;
-  white-space: nowrap;
-  
-  &::-webkit-scrollbar {
-    height: 6px;
-  }
-  
-  &::-webkit-scrollbar-thumb {
-    background-color: rgba(0, 0, 0, 0.2);
-    border-radius: 3px;
-  }
-  
-  &::-webkit-scrollbar-track {
-    background-color: rgba(0, 0, 0, 0.05);
-  }
-}
-
-.book-card {
-  flex: 0 0 auto;
-  width: 120px;
-  margin-right: 15px;
-  padding: 8px;
-  border-radius: 6px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 10px;
   transition: all 0.3s;
-  display: inline-block;
-  vertical-align: top;
-  background-color: #fff;
   
   &:hover {
     transform: translateY(-5px);
-    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+  }
+  
+  .carousel-book-cover {
+    width: 120px;
+    height: 160px;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    margin-bottom: 12px;
+    
+    img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+  }
+  
+  .carousel-book-info {
+    text-align: center;
+    
+    .carousel-book-title {
+      font-size: 14px;
+      color: #303133;
+      margin: 0;
+      padding: 0 10px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 150px;
+    }
   }
 }
 
-.book-cover {
-  width: 100px;
-  height: 150px;
-  border-radius: 4px;
-  overflow: hidden;
-  margin-bottom: 5px;
-  background-color: #f5f7fa;
+.carousel-book-card {
+  height: 100%;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-}
-
-.cover-image {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.book-info {
-  text-align: center;
-}
-
-.book-title {
-  font-weight: bold;
-  margin-bottom: 5px;
-}
-
-.book-author {
-  font-size: 12px;
-  color: #909399;
-}
-
-.book-price {
-  font-size: 14px;
-  font-weight: bold;
-}
-
-/* 统计信息样式 */
-.statistics-info {
+  cursor: pointer;
   padding: 10px;
+  transition: all 0.3s;
+  
+  &:hover {
+    transform: translateY(-5px);
+  }
+  
+  .carousel-book-cover {
+    width: 120px;
+    height: 160px;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    margin-bottom: 12px;
+    
+    img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+  }
+  
+  .carousel-book-info {
+    text-align: center;
+    
+    .carousel-book-title {
+      font-size: 14px;
+      color: #303133;
+      margin: 0;
+      padding: 0 10px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 150px;
+    }
+  }
 }
 
-.statistics-card {
-  margin-top: 5px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-.statistics-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.time-range {
-  font-size: 12px;
-  color: #909399;
-}
-
-.statistics-value {
-  text-align: center;
-  padding: 10px 0;
-}
-
-.statistics-value .value {
-  font-size: 24px;
-  font-weight: bold;
-  color: #409EFF;
-}
-
-.statistics-value .unit {
-  font-size: 14px;
-  color: #606266;
-  margin-left: 4px;
-}
-
-/* 订单创建样式 */
-.order-create {
-  padding: 10px;
-}
-
-.order-steps {
-  background-color: white;
-  border-radius: 6px;
-  padding: 15px;
-  margin-top: 5px;
-}
-
-/* 发布图书样式 */
-.published-book-list {
-  padding: 0 10px 10px 10px;
-}
-
-/* 图书摘要和介绍样式 */
-.book-summary, .book-ai-description {
-  margin-top: 12px;
-  padding: 8px 0;
-  border-top: 1px dashed #eaeaea;
-}
-
-.summary-title, .ai-description-title {
-  font-weight: bold;
-  color: #409EFF;
-  margin-bottom: 5px;
-}
-
-.summary-content, .ai-description-content {
-  font-size: 13px;
-  line-height: 1.5;
-  color: #606266;
-  background-color: #f9f9f9;
-  padding: 8px;
-  border-radius: 4px;
-}
-
-.ai-description-content {
-  white-space: pre-wrap;
-}
-
-// 图书详情弹窗样式
 .book-detail-dialog {
-  padding: 0 10px;
-}
+  .book-detail-content {
+    padding: 0;
+  }
 
-.book-detail-header {
-  display: flex;
-  margin-bottom: 20px;
-}
+  .book-info-header {
+    display: flex;
+    margin-bottom: 24px;
+  }
 
-.book-detail-cover {
-  width: 140px;
-  height: 200px;
-  border-radius: 8px;
-  overflow: hidden;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-}
+  .book-cover {
+    width: 160px;
+    height: 240px;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    margin-right: 24px;
+    flex-shrink: 0;
+    position: relative;
 
-.detail-cover-image {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
+    img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
 
-.book-detail-info {
-  flex: 1;
-  margin-left: 20px;
-}
+    .book-price-tag {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: rgba(245, 108, 108, 0.9);
+      color: white;
+      padding: 6px 10px;
+      font-size: 16px;
+      font-weight: bold;
+      text-align: center;
+    }
+  }
 
-.detail-book-title {
-  margin-top: 0;
-  margin-bottom: 15px;
-  color: #303133;
-  font-size: 18px;
-}
+  .book-basic-info {
+    flex: 1;
 
-.detail-info-row {
-  margin-bottom: 8px;
-  font-size: 14px;
-}
+    .book-title {
+      margin: 0 0 20px 0;
+      font-size: 22px;
+      color: #303133;
+      line-height: 1.4;
+      font-weight: 600;
+    }
 
-.detail-label {
-  font-weight: bold;
-  color: #606266;
-  margin-right: 5px;
-}
+    .book-meta {
+      .meta-item {
+        display: flex;
+        align-items: center;
+        margin-bottom: 12px;
+        color: #606266;
+        font-size: 14px;
 
-.book-detail-description, .book-detail-summary {
-  margin-top: 15px;
-  padding-top: 15px;
-  border-top: 1px solid #ebeef5;
-}
+        i {
+          margin-right: 8px;
+          font-size: 16px;
+          color: #909399;
+          width: 20px;
+          text-align: center;
+        }
+      }
+    }
+  }
 
-.description-title, .summary-title {
-  font-weight: bold;
-  margin-bottom: 8px;
-  color: #303133;
-}
+  .book-details {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 24px;
 
-.description-content, .summary-content {
-  font-size: 14px;
-  line-height: 1.6;
-  color: #606266;
-  white-space: pre-wrap;
-  background-color: #f8f9fa;
-  padding: 10px;
-  border-radius: 4px;
+    .detail-item {
+      text-align: center;
+      padding: 12px;
+      background: white;
+      border-radius: 6px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+
+      .detail-label {
+        color: #909399;
+        font-size: 13px;
+        margin-bottom: 6px;
+      }
+
+      .detail-value {
+        color: #303133;
+        font-size: 15px;
+        font-weight: 500;
+      }
+    }
+  }
+
+  .book-summary {
+    margin-top: 24px;
+    padding: 16px;
+    background: #f8f9fa;
+    border-radius: 8px;
+
+    .summary-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #303133;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+
+      i {
+        margin-right: 8px;
+        color: #409EFF;
+      }
+    }
+
+    .summary-content {
+      font-size: 14px;
+      line-height: 1.8;
+      color: #606266;
+      text-indent: 2em;
+      margin: 0;
+    }
+  }
+
+  .book-tags {
+    margin-top: 24px;
+
+    .tags-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #303133;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+
+      i {
+        margin-right: 8px;
+        color: #409EFF;
+      }
+    }
+
+    .tags-content {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .book-tag {
+      margin: 0;
+      background-color: #f0f2f5;
+      border-color: transparent;
+      color: #606266;
+
+      &:hover {
+        color: #409EFF;
+        background-color: #ecf5ff;
+      }
+    }
+  }
 }
 
 .helpful-message {
-  margin-top: 8px;
-  font-size: 13px;
+  margin: 15px 0;
+  background: #f8f9fa;
+  border-radius: 12px;
+  padding: 15px;
   
-  p {
-    margin: 5px 0;
+  .examples-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 15px;
+    color: #409EFF;
+    font-size: 16px;
+    font-weight: 500;
     
-    &:first-child {
-      color: #f56c6c;
+    i {
+      margin-right: 8px;
+      font-size: 20px;
     }
   }
   
-  .ai-capabilities {
-    font-weight: bold;
-    margin-top: 10px;
-    color: #409EFF;
+  .example-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
   }
   
-  .ai-example-list {
-    margin: 5px 0 0 15px;
-    padding: 0;
-    
-    li {
-      margin-bottom: 5px;
-      list-style-type: circle;
-      color: #606266;
-    }
-  }
-  
-  .example-query {
-    color: #409EFF;
-    font-style: italic;
+  .example-item {
+    background: white;
+    border-radius: 8px;
+    padding: 12px;
+    display: flex;
+    align-items: center;
     cursor: pointer;
+    transition: all 0.3s ease;
+    border: 1px solid #ebeef5;
     
     &:hover {
-      text-decoration: underline;
+      transform: translateX(4px);
+      background: #ecf5ff;
+      border-color: #409EFF;
+      
+      .item-icon i {
+        color: #409EFF;
+        transform: scale(1.1);
+      }
+      
+      .item-arrow i {
+        transform: translateX(4px);
+        color: #409EFF;
+        opacity: 1;
+      }
+    }
+    
+    .item-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: #f0f2f5;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-right: 12px;
+      flex-shrink: 0;
+      
+      i {
+        font-size: 18px;
+        color: #909399;
+        transition: all 0.3s ease;
+      }
+    }
+    
+    .item-content {
+      flex: 1;
+      overflow: hidden;
+      
+      .item-text {
+        font-size: 14px;
+        color: #606266;
+        line-height: 1.4;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+    }
+    
+    .item-arrow {
+      margin-left: 12px;
+      flex-shrink: 0;
+      
+      i {
+        font-size: 16px;
+        color: #c0c4cc;
+        opacity: 0.5;
+        transition: all 0.3s ease;
+      }
     }
   }
 }
 
-.unknown-intent-image {
-  width: 100px;
-  height: 150px;
-  object-fit: cover;
-  margin-top: 10px;
+.book-recommend-reason {
+  margin: 20px 0;
+  padding: 15px;
+  background: #fdf6ec;
+  border-radius: 8px;
+  border-left: 4px solid #e6a23c;
+
+  .reason-title {
+    display: flex;
+    align-items: center;
+    font-size: 16px;
+    font-weight: 600;
+    color: #b88230;
+    margin-bottom: 10px;
+
+    i {
+      margin-right: 8px;
+      font-size: 18px;
+    }
+  }
+
+  .reason-content {
+    color: #666;
+    line-height: 1.6;
+    font-size: 14px;
+    text-indent: 2em;
+  }
 }
 </style> 
