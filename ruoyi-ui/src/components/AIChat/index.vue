@@ -1,7 +1,7 @@
 <template>
-  <div class="ai-chat-container" :class="{ 'is-collapsed': isCollapsed }" :style="containerStyle">
+  <div class="ai-chat-container" :class="{ 'is-collapsed': isCollapsed }" :style="containerStyle" ref="chatContainer">
     <div class="chat-header" @mousedown="startDrag">
-      <span class="chat-title">智能查询助手</span>
+      <span class="chat-title">AI智能查询助手</span>
       <div class="chat-actions">
         <el-button type="text" icon="el-icon-minus" @click.stop="closeChat"></el-button>
       </div>
@@ -371,6 +371,7 @@
         <el-button @click="closeBookDetail">关闭</el-button>
       </span>
     </el-dialog>
+    <div class="resize-handle resize-handle-se" @mousedown.stop="startResize"></div>
   </div>
 </template>
 
@@ -393,7 +394,7 @@ export default {
       isLoading: false,
       messages: [
         {
-          content: '您好！我是智能查询助手，可以帮您查询图书信息、订单状态等。请输入您的问题。',
+          content: '您好！我是AI智能查询助手，可以帮您查询图书信息、订单状态等。请输入您的问题。',
           isUser: false,
           time: this.getCurrentTime(),
           intentData: null
@@ -456,12 +457,36 @@ export default {
       bookDetailVisible: false,
       currentBook: null,
       currentBookRecommendReason: '', // 添加当前图书的推荐理由
+      // 添加拉伸相关数据
+      isResizing: false,
+      size: {
+        width: 350,
+        height: 500
+      },
+      minSize: {
+        width: 300,
+        height: 400
+      },
+      maxSize: {
+        width: 800,
+        height: 800
+      },
+      resizeStartPos: {
+        x: 0,
+        y: 0
+      },
+      resizeStartSize: {
+        width: 0,
+        height: 0
+      }
     }
   },
   computed: {
     containerStyle() {
       return {
-        transform: `translate(${this.position.x}px, ${this.position.y}px)`
+        transform: `translate(${this.position.x}px, ${this.position.y}px)`,
+        width: `${this.size.width}px`,
+        height: `${this.size.height}px`
       }
     }
   },
@@ -480,6 +505,8 @@ export default {
   mounted() {
     document.addEventListener('mousemove', this.onDrag);
     document.addEventListener('mouseup', this.stopDrag);
+    document.addEventListener('mousemove', this.onResize);
+    document.addEventListener('mouseup', this.stopResize);
     
     // 初始化位置为右下角
     this.updateInitialPosition();
@@ -493,6 +520,8 @@ export default {
   beforeDestroy() {
     document.removeEventListener('mousemove', this.onDrag);
     document.removeEventListener('mouseup', this.stopDrag);
+    document.removeEventListener('mousemove', this.onResize);
+    document.removeEventListener('mouseup', this.stopResize);
     window.removeEventListener('resize', this.updateInitialPosition);
   },
   methods: {
@@ -518,14 +547,13 @@ export default {
     },
     updateInitialPosition() {
       if (!this.isDragging) {
-        // 只在没有拖动时更新初始位置
         const isMobile = window.innerWidth <= 767;
         if (isMobile) {
           this.position.x = window.innerWidth * 0.05;
-          this.position.y = window.innerHeight - 470;
+          this.position.y = window.innerHeight - this.size.height - 20;
         } else {
-          this.position.x = window.innerWidth - 370;
-          this.position.y = window.innerHeight - 520;
+          this.position.x = window.innerWidth - this.size.width - 20;
+          this.position.y = window.innerHeight - this.size.height - 20;
         }
       }
     },
@@ -917,6 +945,47 @@ export default {
         console.error('解析推荐理由失败:', e);
         return [];
       }
+    },
+    startResize(event) {
+      if (this.isCollapsed) return;
+      
+      this.isResizing = true;
+      this.resizeStartPos = {
+        x: event.clientX,
+        y: event.clientY
+      };
+      this.resizeStartSize = {
+        width: this.size.width,
+        height: this.size.height
+      };
+      
+      event.preventDefault();
+    },
+    
+    onResize(event) {
+      if (!this.isResizing) return;
+      
+      requestAnimationFrame(() => {
+        const deltaX = event.clientX - this.resizeStartPos.x;
+        const deltaY = event.clientY - this.resizeStartPos.y;
+        
+        // 计算新的尺寸
+        let newWidth = this.resizeStartSize.width + deltaX;
+        let newHeight = this.resizeStartSize.height + deltaY;
+        
+        // 限制最小和最大尺寸
+        newWidth = Math.max(this.minSize.width, Math.min(this.maxSize.width, newWidth));
+        newHeight = Math.max(this.minSize.height, Math.min(this.maxSize.height, newHeight));
+        
+        this.size = {
+          width: newWidth,
+          height: newHeight
+        };
+      });
+    },
+    
+    stopResize() {
+      this.isResizing = false;
     }
   }
 }
@@ -927,7 +996,6 @@ export default {
   position: fixed;
   left: 0;
   top: 0;
-  width: 350px;
   border-radius: 12px;
   box-shadow: 0 5px 25px rgba(0, 0, 0, 0.15);
   background-color: #fff;
@@ -935,24 +1003,26 @@ export default {
   display: flex;
   flex-direction: column;
   transition: transform 0.05s ease;
-  max-height: 500px;
   will-change: transform;
   
   &.is-collapsed {
-    height: 50px;
-    max-height: 50px;
-    width: 250px;
+    height: 50px !important;
+    width: 250px !important;
     overflow: hidden;
     box-shadow: 0 3px 15px rgba(0, 0, 0, 0.1);
     
     .chat-body {
       display: none;
     }
+    
+    .resize-handle {
+      display: none;
+    }
   }
   
   @media (max-width: 767px) {
-    width: 90%;
-    max-height: 400px;
+    width: 90% !important;
+    max-height: 90vh;
   }
 }
 
@@ -992,7 +1062,8 @@ export default {
 .chat-body {
   display: flex;
   flex-direction: column;
-  height: 500px;
+  flex: 1;
+  overflow: hidden;
 }
 
 .chat-messages {
@@ -1407,51 +1478,6 @@ export default {
   }
 }
 
-.carousel-book-card {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  padding: 10px;
-  transition: all 0.3s;
-  
-  &:hover {
-    transform: translateY(-5px);
-  }
-  
-  .carousel-book-cover {
-    width: 120px;
-    height: 160px;
-    border-radius: 8px;
-    overflow: hidden;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    margin-bottom: 12px;
-    
-    img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
-  }
-  
-  .carousel-book-info {
-    text-align: center;
-    
-    .carousel-book-title {
-      font-size: 14px;
-      color: #303133;
-      margin: 0;
-      padding: 0 10px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      max-width: 150px;
-    }
-  }
-}
-
 .book-detail-dialog {
   .book-detail-content {
     padding: 0;
@@ -1740,6 +1766,36 @@ export default {
     line-height: 1.6;
     font-size: 14px;
     text-indent: 2em;
+  }
+}
+
+.resize-handle {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  background: transparent;
+  cursor: se-resize;
+  
+  &.resize-handle-se {
+    right: 0;
+    bottom: 0;
+    
+    &::after {
+      content: '';
+      position: absolute;
+      right: 4px;
+      bottom: 4px;
+      width: 8px;
+      height: 8px;
+      border-right: 2px solid #dcdfe6;
+      border-bottom: 2px solid #dcdfe6;
+      opacity: 0.6;
+      transition: opacity 0.2s;
+    }
+    
+    &:hover::after {
+      opacity: 1;
+    }
   }
 }
 </style> 

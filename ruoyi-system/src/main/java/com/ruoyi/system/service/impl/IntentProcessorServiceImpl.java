@@ -457,7 +457,7 @@ public class IntentProcessorServiceImpl implements IIntentProcessorService
                 for (Map<String, Object> order : orders) {
                     String orderStatus = (String) order.get("status");
                     statusCount.put(orderStatus, statusCount.getOrDefault(orderStatus, 0) + 1);
-                }
+            }
                 message.append("\n订单状态统计：");
                 for (Map.Entry<String, Integer> entry : statusCount.entrySet()) {
                     message.append(String.format("\n%s：%d个", getStatusDesc(entry.getKey()), entry.getValue()));
@@ -602,8 +602,8 @@ public class IntentProcessorServiceImpl implements IIntentProcessorService
                             Map<String, Object> book = (Map<String, Object>) order.get("book");
                             if (book != null && book.containsKey("collegeId")) {
                                 userCollegeIds.add((Integer) book.get("collegeId"));
-                            }
                         }
+                    }
 
                         // 推荐相同类别的其他图书
                         for (Map<String, Object> book : allBooks) {
@@ -614,8 +614,8 @@ public class IntentProcessorServiceImpl implements IIntentProcessorService
                             }
                         }
                         recommendReason = "基于您的购买历史推荐";
+                        }
                     }
-                }
 
                 // 如果没有找到相似图书，返回热门图书
                 if (recommendedBooks.isEmpty()) {
@@ -668,8 +668,8 @@ public class IntentProcessorServiceImpl implements IIntentProcessorService
                 // 生成一个基于类别的默认推荐理由
                 if (collegeId != null) {
                     aiRecommendReason = String.format("为您推荐%s相关的优质图书，这些书籍都经过精心挑选，适合您的专业学习。", getCollegeNameById(collegeId));
-                }
-            }
+                        }
+                    }
 
             result.put("recommendReason", aiRecommendReason);
 
